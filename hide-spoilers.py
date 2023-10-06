@@ -69,7 +69,7 @@ def read_config():
         config['lock_restored_summaries'] = False
 
     if 'ignored_shows' in config:
-        config['ignored_shows'] = config['ignored_shows'].strip().split('\n')
+        config['ignored_shows'] = list(filter(lambda x: len(x) > 0, config['ignored_shows'].splitlines()))
     if not 'ignored_shows' in config or type(config['ignored_shows']) != list:
         config['ignored_shows'] = []
 
