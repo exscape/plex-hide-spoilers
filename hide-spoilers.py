@@ -90,6 +90,17 @@ def read_config():
 
     return config
 
+def get_plex_sections(plex):
+    plex_sections = []
+
+    for library in config['libraries']:
+        try:
+            plex_sections.append(plex.library.section(library))
+        except:
+            print(f"Warning: Plex library {library} not found, ignoring")
+
+    return plex_sections
+
 def update_database(plex):
     """ Download all shows + episodes from Plex and update the database, so that we're not missing anything new """
 
@@ -99,14 +110,8 @@ def update_database(plex):
 
     episodes_by_guid = {}
     added_episodes = 0
-    plex_sections = []
-    for library in config['libraries']:
-        try:
-            plex_sections.append(plex.library.section(library))
-        except:
-            print(f"Warning: Plex library {library} not found, ignoring")
 
-    for plex_section in plex_sections:
+    for plex_section in get_plex_sections(plex):
         for show in plex_section.all():
             for season in show:
                 for episode in season:
@@ -213,23 +218,25 @@ def process_all(database, episodes_by_guid, also_hide=None, also_unhide=None):
 def restore_all(database, episodes_by_guid):
     return restore_summaries(database, episodes_by_guid.keys(), episodes_by_guid)
 
-def lock_unlock_all(episodes_by_guid, lock):
-    # Unfortunately I can't find a better way to do this for locking; there is a "lockallField" method, but we don't want to affect literally ALL
-    # items, just the ones we have changed.
-    # unlockAllField would work for unlocking, but I see little advantage to adding a branch for that.
-    if dry_run:
-        verb = "lock" if lock else "unlock"
-    else:
-        verb = "Locking" if lock else "Unlocking"
+def lock_all(episodes_by_guid):
     for ep in episodes_by_guid.values():
         if verbose or dry_run:
             if dry_run:
-                print(f"Would {verb} {ep.grandparentTitle} episode {ep.title} summary")
+                print(f"Would lock {ep.grandparentTitle} episode {ep.title} summary")
                 continue
             else:
-                print(f"{verb} {ep.grandparentTitle} episode {ep.title} summary")
+                print(f"Locking {ep.grandparentTitle} episode {ep.title} summary")
 
         ep.editField("summary", ep.summary, locked = lock)
+
+def unlock_all(plex):
+    for plex_section in get_plex_sections(plex):
+        if dry_run:
+            print(f"Would unlock all items in Plex library {plex_section.title}")
+            continue
+
+        if verbose: print(f"Unlocking all items in Plex library {plex_section.title}")
+        plex_section.unlockAllField("summary")
 
 if __name__=='__main__':
     args = parse_args()
@@ -264,9 +271,9 @@ if __name__=='__main__':
         process_all(database, episodes_by_guid, also_hide=args.hide, also_unhide=args.unhide)
     elif args.restore_all:
         restore_all(database, episodes_by_guid)
-        lock_unlock_all(episodes_by_guid, lock=False)
+        unlock_all(plex)
     elif args.lock_all:
         episodes_to_lock = {guid: ep for (guid,ep) in episodes_by_guid.items() if ep.summary.startswith(config['hidden_string'])}
-        lock_unlock_all(episodes_to_lock, lock=True)
+        lock_all(episodes_to_lock)
     elif args.unlock_all:
-        lock_unlock_all(episodes_by_guid, lock=False)
+        unlock_all(plex)
