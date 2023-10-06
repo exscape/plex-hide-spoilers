@@ -41,8 +41,7 @@ class Database:
         query_shows = """
         CREATE TABLE shows (
             id TEXT PRIMARY KEY,
-            title TEXT,
-            ignore BOOLEAN
+            title TEXT
         );
         """
         try:
@@ -59,7 +58,7 @@ class Database:
         """ Add a show, WITHOUT committing """
         data = ( {"id": id, "title": title} )
         cur = self.con.cursor()
-        cur.execute("INSERT OR IGNORE INTO shows (id, title, ignore) VALUES (:id, :title, 0)", data)
+        cur.execute("INSERT OR IGNORE INTO shows (id, title) VALUES (:id, :title)", data)
 
     def add_episode(self, episode, season, show):
         """ Add an episode, WITHOUT committing """
