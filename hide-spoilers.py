@@ -5,8 +5,15 @@ import argparse
 import datetime
 import subprocess
 import sqlite3
-import tomllib
 from urllib.request import pathname2url
+
+try:
+    # tomllib ships with Python 3.11+
+    import tomllib # novermin -- excludes from vermin version check
+except ModuleNotFoundError:
+    # tomli (the base for tomllib) is compatible and makes this program
+    # compatible with Python 3.6-3.10 as well as 3.11+
+    import tomli as tomllib
 
 from plexapi.server import PlexServer
 
