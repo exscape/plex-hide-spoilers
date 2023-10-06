@@ -1,0 +1,41 @@
+# URL to the Plex server
+plex_url = "http://192.168.x.x:32400"
+
+# How to find a token:
+# https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
+# You may also be able to find one by looking at Plex cookies.
+# A token looks something like: fIHGeXfEbda_3X_AB123
+# NOTE: this is a major TODO item -- these tokens are not valid forever.
+plex_token = "..."
+
+# !! IMPORTANT !!
+# This cannot be changed after the script has been used for the first time!
+# The code decides whether an episode has been hidden or not by looking for this string,
+# so if you change it after hiding any summaries, those episodes will retain the old
+# summary string until you change this back.
+hidden_string = "Summary hidden."
+
+# Plex libraries to scan for shows and episodes
+# Note: Change this -- you will receive warnings for libraries that don't exist!
+libraries = ['TV Shows', 'TV Series']
+
+# Whether we should lock the summaries we edit or not.
+# Locked summaries won't be automatically overwritten by Plex when you refresh items.
+# By default, we lock the hidden summaries, so that they're not unhidden by Plex, but
+# unlock them when we restore the original text.
+lock_hidden_summaries = true
+lock_restored_summaries = false
+
+# You can specify a list of shows to ignore.
+# Ignored shows always have their summaries visible.
+# For example, you may want to show the summaries for shows you already know by heart,
+# or for certain shows (like comedy shows) where the summary doesn't really spoil anything.
+#
+# Specify this as a TOML multiline string. For example:
+# ignored_shows = """
+# Seinfeld
+# Stargate SG-1
+# """
+
+ignored_shows = """
+"""
