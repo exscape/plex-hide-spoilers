@@ -18,8 +18,6 @@ except ModuleNotFoundError:
 from plexapi.server import PlexServer
 
 debug = False
-verbose = False
-dry_run = False
 config = {}
 
 def parse_args():
@@ -111,6 +109,8 @@ def get_plex_sections(plex):
     return plex_sections
 
 def fetch_episodes(plex):
+    if args.verbose: print("Fetching episodes from Plex...")
+
     episodes_by_guid = {}
 
     for plex_section in get_plex_sections(plex):
@@ -124,12 +124,12 @@ def fetch_episodes(plex):
 def hide_summaries(episodes):
     """ Hides/removes the summaries of ALL episodes in the list. """
     for episode in episodes:
-        if dry_run:
+        if args.dry_run:
             print(f"Would hide summary for {episode.grandparentTitle} episode {episode.title}")
             continue
 
         episode.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
-        if verbose: print(f"Hid summary for {episode.grandparentTitle} episode {episode.title}")
+        if args.verbose: print(f"Hid summary for {episode.grandparentTitle} episode {episode.title}")
 
 def restore_summaries(episodes):
     """ Restore the summaries for recently viewed episodes """
@@ -138,13 +138,13 @@ def restore_summaries(episodes):
         if not ep.summary.startswith(config['hidden_string']):
             continue
 
-        if dry_run:
+        if args.dry_run:
             print(f"Would restore summary for {ep.grandparentTitle} episode {ep.title}")
             continue
 
         ep.editField("summary", ep.summary, locked = False)
         ep.refresh()
-        if verbose: print(f"Restored summary for {ep.grandparentTitle} episode {ep.title}")
+        if args.verbose: print(f"Restored summary for {ep.grandparentTitle} episode {ep.title}")
 
 def process(episodes, also_hide=None, also_unhide=None):
 
@@ -168,7 +168,7 @@ def process(episodes, also_hide=None, also_unhide=None):
     to_unhide.update(ignored_to_unhide)
 
     if to_unhide:
-        print("Would restore" if dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
+        print("Would restore" if args.dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
         restore_summaries(to_unhide)
     else:
         print("No watched episodes since last run")
@@ -184,7 +184,7 @@ def process(episodes, also_hide=None, also_unhide=None):
         to_hide.add(also_hide)
 
     if to_hide:
-        print("Would hide" if dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
+        print("Would hide" if args.dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
         hide_summaries(to_hide)
     else:
         print("No new episodes to hide summaries for")
@@ -193,15 +193,9 @@ if __name__=='__main__':
     args = parse_args()
     config = read_config(args.config_path)
     if debug:
+        args.verbose = True
         print(f"Args: {args}")
         print(f"Config dump: {config}")
-
-    if args.verbose:
-        verbose = True
-    if args.dry_run:
-        dry_run = True
-    if debug:
-        verbose = True
 
     try:
         plex = PlexServer(config['plex_url'], config['plex_token'])
@@ -209,7 +203,6 @@ if __name__=='__main__':
         print(f"Unable to connect to Plex server! Error from API: {e}")
         sys.exit(16)
 
-    if verbose: print("Fetching episodes from Plex...")
     episodes_by_guid = fetch_episodes(plex)
 
     if args.restore_all:
