@@ -21,10 +21,8 @@ libraries = ['TV Shows', 'TV Series']
 
 # Whether we should lock the summaries we edit or not.
 # Locked summaries won't be automatically overwritten by Plex when you refresh items.
-# By default, we lock the hidden summaries, so that they're not unhidden by Plex, but
-# unlock them when we restore the original text.
+# If this is set to false, refreshing metadata in Plex will restore all summaries.
 lock_hidden_summaries = true
-lock_restored_summaries = false
 
 # You can specify a list of shows to ignore.
 # Ignored shows always have their summaries visible.
@@ -39,7 +37,3 @@ lock_restored_summaries = false
 
 ignored_shows = """
 """
-
-# If for whatever reason you don't want to store the database next to this configuration file,
-# you can override dbpath here. For most users, I recommend leaving this as-is, commented out.
-# dbpath = '/some/path/summaries.sqlite3'
