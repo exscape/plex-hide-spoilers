@@ -4,7 +4,8 @@ import sqlite3
 from urllib.request import pathname2url
 
 class Database:
-    def __init__(self, verbose = False, debug = False):
+    def __init__(self, config, verbose = False, debug = False):
+        self.config = config
         self.verbose = verbose
         self.debug = debug
         if self.debug:
@@ -14,17 +15,16 @@ class Database:
         self.added_shows = set()
 
         try:
-            dbname = "summaries.sqlite3"
-            dburi = 'file:{}?mode=rw'.format(pathname2url(dbname))
+            dburi = 'file:{}?mode=rw'.format(pathname2url(self.config['dbpath']))
             self.con = sqlite3.connect(dburi, uri=True)
             if self.debug: print("Database loaded successfully")
         except sqlite3.OperationalError:
             if self.debug: print("Database not found, creating it")
             self.create_database()
 
-            dburi = 'file:{}?mode=rw'.format(pathname2url(dbname))
+            dburi = 'file:{}?mode=rw'.format(pathname2url(self.config['dbpath']))
             self.con = sqlite3.connect(dburi, uri=True)
-            if self.debug: print("Database created successfully")
+            print("Database file was not found, but was created successfully")
 
     def create_database(self):
         query_episodes = """
@@ -45,13 +45,13 @@ class Database:
         );
         """
         try:
-            con = sqlite3.connect("summaries.sqlite3")
+            con = sqlite3.connect(self.config['dbpath'])
             cur = con.cursor()
             cur.execute(query_episodes)
             cur.execute(query_shows)
             con.close()
         except Exception as e:
-            print(f"Unable to create database file (summaries.sqlite3): {e}")
+            print(f"Unable to create database file ({self.config['dbpath']}): {e}")
             sys.exit(32)
 
     def _add_show(self, id, title):

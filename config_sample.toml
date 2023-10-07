@@ -39,3 +39,7 @@ lock_restored_summaries = false
 
 ignored_shows = """
 """
+
+# If for whatever reason you don't want to store the database next to this configuration file,
+# you can override dbpath here. For most users, I recommend leaving this as-is, commented out.
+# dbpath = '/some/path/summaries.sqlite3'

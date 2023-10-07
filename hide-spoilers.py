@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import argparse
 import datetime
@@ -39,24 +40,42 @@ def parse_args():
 
     parser.add_argument('--dry-run', action="store_true", help="Only print what would be changed; don't actually change anything")
     parser.add_argument('--verbose', action="store_true", help="Print each action taken")
+    parser.add_argument('--config-dir', help="Path to the directory containing the configuration file (config.toml) and database")
 
     return parser.parse_args()
 
-def read_config():
+def read_config(config_dir = None):
     global config
 
+    if config_dir:
+        config_dir = os.path.abspath(config_dir)
+        config_path = os.path.join(config_dir, "config.toml")
+    else:
+        # If config_dir = None, first look at the directory containing the script/executable,
+        # then its parent directory -- as __file__ points to a subdirectory with PyInstaller 6.0+.
+        script_abspath = os.path.abspath(__file__)
+        config_dir = os.path.dirname(script_abspath)
+        config_path = os.path.join(config_dir, "config.toml")
+        if not os.path.exists(config_path):
+            old_config_dir = config_dir
+            config_dir = os.path.dirname(config_dir)
+            config_path = os.path.join(config_dir, "config.toml")
+            if not os.path.exists(config_path):
+                print(f"Configuration file (config.toml) not found!\nI looked in \"{old_config_dir}\" and \"{config_dir}\".\nDo you need to copy config_sample.toml to config.toml and edit it?")
+                sys.exit(1)
+
     try:
-        conf_file = open("config.toml", "rb")
+        conf_file = open(config_path, "rb")
         config = tomllib.load(conf_file)
         conf_file.close()
     except FileNotFoundError:
-        print("Configuration file (config.toml) not found! Copy config.toml.sample to config.toml and edit it!")
+        print(f"Configuration file ({config_path}) not found!\nDo you need to copy config_sample.toml to config.toml and edit it?")
         sys.exit(1)
     except tomllib.TOMLDecodeError as e:
-        print(f"Configuration file invalid: {e}")
+        print(f"Configuration file ({config_path}) invalid: {e}")
         sys.exit(2)
     except:
-        print("Unable to read configuration file (no read permission?)")
+        print(f"Unable to read configuration file ({config_path}) -- no read permission?")
         sys.exit(4)
 
     if config is None or type(config) != dict:
@@ -83,10 +102,12 @@ def read_config():
                            'ignored_shows', 'lock_hidden_summaries', 'lock_restored_summaries'):
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
-
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
         print("You need to edit config.toml and change the Plex server settings to match your server!")
         sys.exit(2)
+
+    if not 'dbpath' in config:
+        config['dbpath'] = os.path.join(config_dir, "summaries.sqlite3")
 
     return config
 
@@ -240,8 +261,9 @@ def unlock_all(plex):
 
 if __name__=='__main__':
     args = parse_args()
-    config = read_config()
+    config = read_config(args.config_dir)
     if debug:
+        print(f"Args: {args}")
         print(f"Config dump: {config}")
 
     if (args.hide or args.unhide) and not args.process_all:
@@ -255,7 +277,7 @@ if __name__=='__main__':
     if debug:
         verbose = True
 
-    database = Database(verbose, debug)
+    database = Database(config, verbose, debug)
     if debug: print("Database loaded/created successfully")
 
     try:
