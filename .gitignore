@@ -3,3 +3,8 @@ _*
 *.sqlite3
 config.toml
 env/
+
+# PyInstaller stuff
+build/
+dist/
+hide-spoilers.spec
