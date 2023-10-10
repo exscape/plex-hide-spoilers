@@ -7,6 +7,8 @@ plex_url = "http://192.168.x.x:32400"
 # A token looks something like: fIHGeXfEbda_3X_AB123
 plex_token = "..."
 
+# The text to show on Plex for episodes with their summmary hidden.
+#
 # !! IMPORTANT !!
 # This cannot be changed after the script has been used for the first time!
 # The code decides whether an episode has been hidden or not by looking for this string,

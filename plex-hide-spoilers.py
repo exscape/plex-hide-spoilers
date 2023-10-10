@@ -136,7 +136,6 @@ def episode_title_string(ep):
     """ Create a string to describe an episode. """
     return f"{ep.grandparentTitle} season {ep.parentIndex} episode {ep.index} \"{ep.title}\""
 
-
 def hide_summaries(episodes):
     """ Hides/removes the summaries of ALL episodes in the list. """
 
@@ -163,6 +162,10 @@ def restore_summaries(episodes):
         ep.refresh()
         if args.verbose: print(f"Restored summary for {episode_title_string(ep)}")
 
+def compare_episodes(e):
+    """ Create a simple ordering between episodes (by show, then season, then episode) """
+    return (e.grandparentTitle, e.parentIndex, e.index)
+
 def process(episodes, also_hide=None, also_unhide=None):
 
     # Step 1: restore summaries of episodes we've seen (since last run)
@@ -187,7 +190,7 @@ def process(episodes, also_hide=None, also_unhide=None):
     if to_unhide:
         if args.dry_run or not args.quiet:
             print("Would restore" if args.dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
-        restore_summaries(to_unhide)
+        restore_summaries(sorted(to_unhide, key=compare_episodes))
     elif not args.quiet:
         print("No watched episodes since last run")
 
@@ -204,7 +207,7 @@ def process(episodes, also_hide=None, also_unhide=None):
     if to_hide:
         if args.dry_run or not args.quiet:
             print("Would hide" if args.dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
-        hide_summaries(to_hide)
+        hide_summaries(sorted(to_hide, key=compare_episodes))
     elif not args.quiet:
         print("No new episodes to hide summaries for")
 
