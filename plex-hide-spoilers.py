@@ -188,8 +188,9 @@ def process(episodes, also_hide=None, also_unhide=None):
     to_unhide.update(ignored_to_unhide)
 
     if to_unhide:
-        if args.dry_run or not args.quiet:
-            print("Would restore" if args.dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
+        if (args.dry_run or not args.quiet) and not args.verbose:
+            # If verbose, we print each episode restored, so we don't need this too
+            print(("Would restore" if args.dry_run else "Restoring") + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
         restore_summaries(sorted(to_unhide, key=compare_episodes))
     elif not args.quiet:
         print("No watched episodes since last run")
@@ -205,8 +206,9 @@ def process(episodes, also_hide=None, also_unhide=None):
         to_hide.add(also_hide)
 
     if to_hide:
-        if args.dry_run or not args.quiet:
-            print("Would hide" if args.dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
+        if (args.dry_run or not args.quiet) and not args.verbose:
+            # If verbose, we print each episode hidden, so we don't need this too
+            print(("Would hide" if args.dry_run else "Hiding") + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
         hide_summaries(sorted(to_hide, key=compare_episodes))
     elif not args.quiet:
         print("No new episodes to hide summaries for")

@@ -5,7 +5,7 @@ if [[ ! -f "plex-hide-spoilers.py" ]]; then
     exit 1
 fi
 
-rm -rf dist build
+rm -rf dist/plex-hide-spoilers build
 
 pyinstaller --contents-directory 'data' plex-hide-spoilers.py
 cp config_sample.toml README.md dist/plex-hide-spoilers
