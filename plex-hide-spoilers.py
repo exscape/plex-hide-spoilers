@@ -121,15 +121,20 @@ def fetch_episodes(plex):
 
     return episodes_by_guid
 
+def episode_title_string(ep):
+    """ Create a string to describe an episode. """
+    return f"{ep.grandparentTitle} season {ep.parentIndex} episode {ep.index} \"{ep.title}\""
+
+
 def hide_summaries(episodes):
     """ Hides/removes the summaries of ALL episodes in the list. """
-    for episode in episodes:
+    for ep in episodes:
         if args.dry_run:
-            print(f"Would hide summary for {episode.grandparentTitle} episode {episode.title}")
+            print(f"Would hide summary for {episode_title_string(ep)}")
             continue
 
-        episode.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
-        if args.verbose: print(f"Hid summary for {episode.grandparentTitle} episode {episode.title}")
+        ep.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
+        if args.verbose: print(f"Hid summary for {episode_title_string(ep)}")
 
 def restore_summaries(episodes):
     """ Restore the summaries for recently viewed episodes """
@@ -139,12 +144,12 @@ def restore_summaries(episodes):
             continue
 
         if args.dry_run:
-            print(f"Would restore summary for {ep.grandparentTitle} episode {ep.title}")
+            print(f"Would restore summary for {episode_title_string(ep)}")
             continue
 
         ep.editField("summary", ep.summary, locked = False)
         ep.refresh()
-        if args.verbose: print(f"Restored summary for {ep.grandparentTitle} episode {ep.title}")
+        if args.verbose: print(f"Restored summary for {episode_title_string(ep)}")
 
 def process(episodes, also_hide=None, also_unhide=None):
 
