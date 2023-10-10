@@ -33,8 +33,11 @@ def parse_args():
     group.add_argument('--also-unhide', metavar="plex://episode/...", help="Additionally unhide summary from one episode (see README.md)")
 
     parser.add_argument('--dry-run', action="store_true", help="Only print what would be changed; don't actually change anything")
-    parser.add_argument('--verbose', action="store_true", help="Print each action taken")
     parser.add_argument('--config-path', help="Path to the configuration file (config.toml)")
+
+    verbosity = parser.add_mutually_exclusive_group(required=False)
+    verbosity.add_argument('--quiet', action="store_true", help="Only print when something goes wrong (--dry-run overrides)")
+    verbosity.add_argument('--verbose', action="store_true", help="Print each action taken")
 
     return parser.parse_args()
 
@@ -173,9 +176,10 @@ def process(episodes, also_hide=None, also_unhide=None):
     to_unhide.update(ignored_to_unhide)
 
     if to_unhide:
-        print("Would restore" if args.dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
+        if args.dry_run or not args.quiet:
+            print("Would restore" if args.dry_run else "Restoring" + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
         restore_summaries(to_unhide)
-    else:
+    elif not args.quiet:
         print("No watched episodes since last run")
 
     # Step 2: hide summaries of recently added, unseen episodes
@@ -189,9 +193,10 @@ def process(episodes, also_hide=None, also_unhide=None):
         to_hide.add(also_hide)
 
     if to_hide:
-        print("Would hide" if args.dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
+        if args.dry_run or not args.quiet:
+            print("Would hide" if args.dry_run else "Hiding" + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
         hide_summaries(to_hide)
-    else:
+    elif not args.quiet:
         print("No new episodes to hide summaries for")
 
 if __name__=='__main__':
@@ -199,6 +204,7 @@ if __name__=='__main__':
     config = read_config(args.config_path)
     if debug:
         args.verbose = True
+        args.quiet = False
         print(f"Args: {args}")
         print(f"Config dump: {config}")
 
