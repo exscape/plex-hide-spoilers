@@ -29,8 +29,8 @@ def parse_args():
 
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument('--restore-all', action='store_true', help="Restore all hidden summaries (tell Plex to re-download them)")
-    group.add_argument('--hide', metavar="plex://episode/...", help="Additionally hide summary from one episode (see README.md)")
-    group.add_argument('--unhide', metavar="plex://episode/...", help="Additionally unhide summary from one episode (see README.md)")
+    group.add_argument('--also-hide', metavar="plex://episode/...", help="Additionally hide summary from one episode (see README.md)")
+    group.add_argument('--also-unhide', metavar="plex://episode/...", help="Additionally unhide summary from one episode (see README.md)")
 
     parser.add_argument('--dry-run', action="store_true", help="Only print what would be changed; don't actually change anything")
     parser.add_argument('--verbose', action="store_true", help="Print each action taken")
@@ -212,16 +212,16 @@ if __name__=='__main__':
         also_hide_ep = None
         also_unhide_ep = None
 
-        if args.hide:
+        if args.also_hide:
             try:
-                also_hide_ep = episodes_by_guid[args.hide]
+                also_hide_ep = episodes_by_guid[args.also_hide]
             except:
-                print(f"Failed to locate episode with GUID {args.hide} specified with --hide, ignoring", file=sys.stderr)
+                print(f"Failed to locate episode with GUID {args.also_hide} specified with --also-hide, ignoring", file=sys.stderr)
 
-        if args.unhide:
+        if args.also_unhide:
             try:
-                also_unhide_ep = episodes_by_guid[args.unhide]
+                also_unhide_ep = episodes_by_guid[args.also_unhide]
             except:
-                print(f"Failed to locate episode with GUID {args.unhide} specified with --unhide, ignoring", file=sys.stderr)
+                print(f"Failed to locate episode with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
 
         process(episodes_by_guid.values(), also_hide_ep, also_unhide_ep)
