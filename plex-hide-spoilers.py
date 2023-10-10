@@ -27,17 +27,17 @@ def parse_args():
     'watched since the last run.',
     formatter_class=argparse.RawDescriptionHelpFormatter)
 
+    verbosity = parser.add_mutually_exclusive_group(required=False)
+    verbosity.add_argument('--verbose', action="store_true", help="Print each action taken")
+    verbosity.add_argument('--quiet', action="store_true", help="Only print when something goes wrong (--dry-run overrides)")
+
+    parser.add_argument('--dry-run', action="store_true", help="Only print what would be changed; don't actually change anything")
+    parser.add_argument('--config-path', metavar="PATH", help="Path to the configuration file (config.toml)")
+
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument('--restore-all', action='store_true', help="Restore all hidden summaries (tell Plex to re-download them)")
     group.add_argument('--also-hide', metavar="plex://episode/...", help="Additionally hide summary from one episode (see README.md)")
     group.add_argument('--also-unhide', metavar="plex://episode/...", help="Additionally unhide summary from one episode (see README.md)")
-
-    parser.add_argument('--dry-run', action="store_true", help="Only print what would be changed; don't actually change anything")
-    parser.add_argument('--config-path', help="Path to the configuration file (config.toml)")
-
-    verbosity = parser.add_mutually_exclusive_group(required=False)
-    verbosity.add_argument('--quiet', action="store_true", help="Only print when something goes wrong (--dry-run overrides)")
-    verbosity.add_argument('--verbose', action="store_true", help="Print each action taken")
 
     return parser.parse_args()
 
