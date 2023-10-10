@@ -5,7 +5,6 @@ plex_url = "http://192.168.x.x:32400"
 # https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
 # You may also be able to find one by looking at Plex cookies.
 # A token looks something like: fIHGeXfEbda_3X_AB123
-# NOTE: this is a major TODO item -- these tokens are not valid forever.
 plex_token = "..."
 
 # !! IMPORTANT !!

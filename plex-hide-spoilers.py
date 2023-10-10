@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# Copyright 2023 Thomas Backman.
+# See LICENSE.txt for further license information.
+
 import os
 import sys
 import argparse
@@ -12,7 +15,7 @@ try:
     import tomllib # novermin -- excludes from vermin version check
 except ModuleNotFoundError:
     # tomli (the base for tomllib) is compatible and makes this program
-    # compatible with Python 3.6-3.10 as well as 3.11+
+    # compatible with Python 3.8-3.10 as well as 3.11+
     import tomli as tomllib
 
 from plexapi.server import PlexServer
@@ -22,11 +25,11 @@ config = {}
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes.\n\n' +
-    'When run without options, this script will hide the summaries for all unwatched episodes ' +
-    '(except for shows ignored in the configuration file), and restore the summaries for all episodes ' +
-    'watched since the last run.\n' +
-    "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
-    formatter_class=argparse.RawDescriptionHelpFormatter)
+        'When run without options, this script will hide the summaries for all unwatched episodes ' +
+        '(except for shows ignored in the configuration file), and restore the summaries for all episodes ' +
+        'watched since the last run.\n' +
+        "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
 
     verbosity = parser.add_mutually_exclusive_group(required=False)
     verbosity.add_argument('--verbose', action="store_true", help="Print each action taken")
@@ -60,7 +63,7 @@ def read_config(config_path = None):
                 sys.exit(1)
 
     if os.path.isdir(config_path):
-        print("Specified configuration file is a directory! --config-path should point to the config.toml file.")
+        print("Specified configuration file is a directory! --config-path should point to the configuration file itself.")
         sys.exit(1)
 
     try:
@@ -136,6 +139,7 @@ def episode_title_string(ep):
 
 def hide_summaries(episodes):
     """ Hides/removes the summaries of ALL episodes in the list. """
+
     for ep in episodes:
         if args.dry_run:
             print(f"Would hide summary for {episode_title_string(ep)}")
@@ -223,7 +227,6 @@ if __name__=='__main__':
 
     if args.restore_all:
         restore_summaries(episodes_by_guid.values())
-        sys.exit(0)
     else:
         also_hide_ep = None
         also_unhide_ep = None
