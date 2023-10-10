@@ -24,7 +24,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes.\n\n' +
     'When run without options, this script will hide the summaries for all unwatched episodes ' +
     '(except for shows ignored in the configuration file), and restore the summaries for all episodes ' +
-    'watched since the last run.',
+    'watched since the last run.\n' +
+    "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
     formatter_class=argparse.RawDescriptionHelpFormatter)
 
     verbosity = parser.add_mutually_exclusive_group(required=False)
@@ -57,6 +58,10 @@ def read_config(config_path = None):
             if not os.path.exists(config_path):
                 print(f"Configuration file (config.toml) not found!\nI looked in \"{old_config_dir}\" and \"{config_dir}\".\nDo you need to copy config_sample.toml to config.toml and edit it?")
                 sys.exit(1)
+
+    if os.path.isdir(config_path):
+        print("Specified configuration file is a directory! --config-path should point to the config.toml file.")
+        sys.exit(1)
 
     try:
         conf_file = open(config_path, "rb")
