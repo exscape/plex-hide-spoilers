@@ -7,4 +7,4 @@ env/
 # PyInstaller stuff
 build/
 dist/
-hide-spoilers.spec
+*.spec
