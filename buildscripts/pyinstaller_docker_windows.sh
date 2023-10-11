@@ -8,7 +8,7 @@ fi
 rm -rf dist/windows/plex-hide-spoilers build
 
 # 3.8 is the latest Python version that easily runs under Wine at the moment
-docker run -v "$(pwd):/src/" pyinstaller-3.8-win64
+docker run --rm -v "$(pwd):/src/" pyinstaller-3.8-win64
 
 cp config_sample.toml README.md dist/windows/plex-hide-spoilers
 cp -Rp licenses dist/windows/plex-hide-spoilers
