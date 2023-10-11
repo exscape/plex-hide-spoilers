@@ -27,7 +27,7 @@ The easiest way to install (recommended for most users) is to use the binary bui
 I use PyInstaller to create an easy-to-run build of the script, which while perfectly safe unfortunately seems to trigger Windows Defender at times. I got a detection of "Trojan:Win32/Wacatac.B!ml" when trying it on a different program I've written and know is safe. I have NOT gotten any warnings about this script!  
 If you get such a warning, you can either take me at my word when I say that it's a false detection and entirely safe, or use the manual install method detailed below to have more control.
 
-To install this way, download the [latest binary release](https://github.com/exscape/plex-hide-spoilers/releases/), unpack the zip contents where you want them, and then skip to the [Configuration](#configuration) section below.
+To install this way, download the [latest binary release](https://github.com/exscape/plex-hide-spoilers/releases/) (the latest one named ...-windows.zip), unpack the zip contents where you want them, and then skip to the [Configuration](#configuration) section below.
 
 ### Using pip
 
@@ -62,7 +62,7 @@ If you don't do this, you will get import errors unless you have the dependencie
 
 The easiest way to install is to use the binary builds. They contain the script itself, a Python interpreter, and all dependencies. 
 
-Download the [latest binary release](https://github.com/exscape/plex-hide-spoilers/releases/), and unpack the zip contents where you want them, then skip to the [Configuration](#configuration) section below.
+Download the [latest binary release](https://github.com/exscape/plex-hide-spoilers/releases/) (the latest one named ...-linux-amd64.tar.bz2), and unpack the zip contents where you want them, then skip to the [Configuration](#configuration) section below.
 
 ### Using pip
 
