@@ -55,9 +55,9 @@ class PlexListener:
 
         return time.time() - self.lastUpdate
 
-    def waitForFinish(self, timeout):
+    def waitForFinish(self, timeout = 2):
         if not args.quiet:
-            print("Waiting for Plex to finish processing.", end="", flush=True)
+            print("Waiting for Plex to finish processing...", end="", flush=True)
 
         while self.timeSinceLastUpdate() < timeout:
             if not args.quiet:
@@ -212,29 +212,61 @@ def hide_summaries(items):
 def restore_summaries(listener, items, force_restore = False):
     """ Restore the summaries for recently viewed items """
 
-    to_restore = [item for item in items if (force_restore or item.summary.startswith(config['hidden_string']))]
+    IN_PROGRESS = "Summary restore in progress..."
 
-    if not args.quiet and not args.dry_run:
-        print("Unlocking summaries...")
-
-    for item in to_restore:
-        if args.dry_run:
-            print(f"Would restore summary for {item_title_string(item)}")
-            continue
-
-        item.editField("summary", item.summary, locked = False)
+    to_restore = [item for item in items if (item.summary.startswith(config['hidden_string']) or force_restore)]
 
     if args.dry_run:
+        for item in to_restore:
+            print(f"Would restore summary for {item_title_string(item)}")
         return
 
-    listener.waitForFinish(2)
-
-    if not args.quiet:
-        print("Restoring summaries...")
-
     for item in to_restore:
+        if len(item.summary.strip()) > 0:
+            # If we write to an item with no summary (because Plex couldn't find one), that IN_PROGRESS summary
+            # will remain even after you refresh metadata! We don't want that.
+            item.editField("summary", IN_PROGRESS, locked = False)
         item.refresh()
         if args.verbose: print(f"Restored summary for {item_title_string(item)}")
+
+    # All API requests are now sent to Plex, but it may not have finished downloading summaries yet
+    listener.waitForFinish()
+
+    if not args.quiet: print("Beginning verification...")
+
+    # Some requests seem to randomly fail (for me usually 1 or 2 out of about 1000); we want to try downloading them again
+    for i in range(3):
+        if args.debug: print("Start metadata reload...")
+        for item in to_restore:
+            item.reload()
+        if args.debug: print("Reload finished")
+
+        to_restore = [item for item in to_restore if (item.summary == IN_PROGRESS or item.summary == config['hidden_string'])]
+        if not to_restore:
+            if not args.quiet: print("All summaries were successfully restored")
+            return
+
+        if not args.quiet:
+            print(f"Retrying {len(to_restore)} items where Plex failed to download summaries...")
+            if args.verbose:
+                for item in to_restore:
+                    print(f"   Retrying {item_title_string(item)}")
+
+        for item in to_restore:
+            item.refresh()
+
+        listener.waitForFinish()
+
+    failed = [item for item in to_restore if (item.summary == IN_PROGRESS or item.summary == config['hidden_string'])]
+
+    if not failed and not args.quiet:
+        print("All summaries were successfully restored")
+        return
+
+    for item in failed:
+        # Clear the summary, since otherwise it will be either hidden or "Summary restore in progress..." which isn't true
+        item.editField("summary", "", locked = False)
+        print(f"Failed to restore summary for {item_title_string(item)}")
 
 def compare_items(i):
     """ Create an ordering between items: first shows (by title, season and episode), then movies (by title and year). """
@@ -336,4 +368,4 @@ if __name__=='__main__':
 
         process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
 
-    listener.waitForFinish(2)
+    listener.waitForFinish()
