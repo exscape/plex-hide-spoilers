@@ -3,6 +3,9 @@
 # Copyright 2023 Thomas Backman.
 # See LICENSE.txt for further license information.
 
+# Note: Throughout this file, "item" is used to refer to a TV episode *or* a movie.
+# Most code works the same regardless of type, though some code can't be shared.
+
 import os
 import sys
 import argparse
@@ -24,9 +27,9 @@ debug = False
 config = {}
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes.\n\n' +
-        'When run without options, this script will hide the summaries for all unwatched episodes ' +
-        '(except for shows ignored in the configuration file), and restore the summaries for all episodes ' +
+    parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes and movies.\n\n' +
+        'When run without options, this script will hide the summaries for all unwatched items (episodes + movies) ' +
+        '(except for shows ignored in the configuration file) in the chosen libraries, and restore the summaries for all items ' +
         'watched since the last run.\n' +
         "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -40,8 +43,8 @@ def parse_args():
 
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument('--restore-all', action='store_true', help="Restore all hidden summaries (tell Plex to re-download them)")
-    group.add_argument('--also-hide', metavar="plex://episode/...", help="Additionally hide summary from one episode (see README.md)")
-    group.add_argument('--also-unhide', metavar="plex://episode/...", help="Additionally unhide summary from one episode (see README.md)")
+    group.add_argument('--also-hide', metavar="plex://.../...", help="Additionally hide summary from one item (see README.md)")
+    group.add_argument('--also-unhide', metavar="plex://.../...", help="Additionally unhide summary from one item (see README.md)")
 
     return parser.parse_args()
 
@@ -87,10 +90,10 @@ def read_config(config_path = None):
     if not 'lock_hidden_summaries' in config:
         config['lock_hidden_summaries'] = True
 
-    if 'ignored_shows' in config:
-        config['ignored_shows'] = list(filter(lambda x: len(x) > 0, config['ignored_shows'].splitlines()))
-    if not 'ignored_shows' in config or type(config['ignored_shows']) != list:
-        config['ignored_shows'] = []
+    if 'ignored_items' in config:
+        config['ignored_items'] = list(filter(lambda x: len(x) > 0, config['ignored_items'].splitlines()))
+    if not 'ignored_items' in config or type(config['ignored_items']) != list:
+        config['ignored_items'] = []
 
     for setting in ('plex_url', 'plex_token', 'hidden_string', 'libraries'):
         if not setting in config or len(config[setting]) == 0:
@@ -99,7 +102,7 @@ def read_config(config_path = None):
 
     for setting in config:
         if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries',
-                           'ignored_shows', 'lock_hidden_summaries'):
+                           'ignored_items', 'lock_hidden_summaries'):
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
@@ -113,94 +116,116 @@ def get_plex_sections(plex):
 
     for library in config['libraries']:
         try:
-            plex_sections.append(plex.library.section(library))
+            section = plex.library.section(library)
+            if section.type in ('movie', 'show'):
+                plex_sections.append(section)
+            else:
+                print("Warning: Plex library {library} is not a TV or movie library, ignoring")
         except:
             print(f"Warning: Plex library {library} not found, ignoring")
 
     return plex_sections
 
-def fetch_episodes(plex):
-    if args.verbose: print("Fetching episodes from Plex...")
+def fetch_items(plex):
+    if args.verbose: print("Fetching items from Plex...")
 
-    episodes_by_guid = {}
+    items_by_guid = {}
 
     for plex_section in get_plex_sections(plex):
-        for show in plex_section.all():
-            for season in show:
-                for episode in season:
-                    episodes_by_guid[episode.guid] = episode
+        if plex_section.type == 'show':
+            for show in plex_section.all():
+                for season in show:
+                    for episode in season:
+                        items_by_guid[episode.guid] = episode
+                        if debug: print(f"Found {item_title_string(episode)} ({episode.guid})")
+        elif plex_section.type == 'movie':
+            for movie in plex_section.all():
+                items_by_guid[movie.guid] = movie
+                if debug: print(f"Found {item_title_string(movie)} ({movie.guid})")
 
-    return episodes_by_guid
+    return items_by_guid
 
-def episode_title_string(ep):
-    """ Create a string to describe an episode. """
-    return f"{ep.grandparentTitle} season {ep.parentIndex} episode {ep.index} \"{ep.title}\""
+def item_title_string(item):
+    """ Create a string to describe an item. """
+    if item.type == 'episode':
+        return f"{item.grandparentTitle} season {item.parentIndex} episode {item.index} \"{item.title}\""
+    elif item.type == 'movie':
+        return f"{item.title} ({item.year})"
 
-def hide_summaries(episodes):
-    """ Hides/removes the summaries of ALL episodes in the list. """
+def hide_summaries(items):
+    """ Hides/removes the summaries of ALL items in the list. """
 
-    for ep in episodes:
+    for item in items:
         if args.dry_run:
-            print(f"Would hide summary for {episode_title_string(ep)}")
+            print(f"Would hide summary for {item_title_string(item)}")
             continue
 
-        ep.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
-        if args.verbose: print(f"Hid summary for {episode_title_string(ep)}")
+        item.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
+        if args.verbose: print(f"Hid summary for {item_title_string(item)}")
 
-def restore_summaries(episodes):
-    """ Restore the summaries for recently viewed episodes """
+def restore_summaries(items):
+    """ Restore the summaries for recently viewed items """
 
-    for ep in episodes:
-        if not ep.summary.startswith(config['hidden_string']):
+    for item in items:
+        if not item.summary.startswith(config['hidden_string']):
             continue
 
         if args.dry_run:
-            print(f"Would restore summary for {episode_title_string(ep)}")
+            print(f"Would restore summary for {item_title_string(item)}")
             continue
 
-        ep.editField("summary", ep.summary, locked = False)
-        ep.refresh()
-        if args.verbose: print(f"Restored summary for {episode_title_string(ep)}")
+        item.editField("summary", item.summary, locked = False)
+        item.refresh()
+        if args.verbose: print(f"Restored summary for {item_title_string(item)}")
 
-def compare_episodes(e):
-    """ Create a simple ordering between episodes (by show, then season, then episode) """
-    return (e.grandparentTitle, e.parentIndex, e.index)
+def compare_items(i):
+    """ Create an ordering between items: first shows (by title, season and episode), then movies (by title and year). """
+    return (i.type == 'movie', # False is sorted prior to True, so this makes shows sort higher than movies
+            i.grandparentTitle if i.type == 'episode' else i.title, # TV show title or movie title
+            i.parentIndex if i.type == 'episode' else i.year, # Season for TV shows, year for movies
+            i.index if i.type == 'episode' else 0) # Episode number for TV shows
 
-def process(episodes, also_hide=None, also_unhide=None):
+def should_ignore_item(item):
+    if item.type == 'episode':
+        return item.grandparentTitle in config['ignored_items']
+    elif item.type == 'movie':
+        return item.title in config['ignored_items']
 
-    # Step 1: restore summaries of episodes we've seen (since last run)
+def process(items, also_hide=None, also_unhide=None):
 
-    unseen_eps = [ep for ep in episodes if not ep.isPlayed]
-    seen_eps = [ep for ep in episodes if ep.isPlayed]
+    # Step 1: restore summaries of items we've seen (since last run)
 
-    if debug: print(f"Done sorting seen vs unseen; seen {len(seen_eps)}, unseen {len(unseen_eps)}, total {len(episodes_by_guid)} episodes")
+    unseen_items = [item for item in items if not item.isPlayed]
+    seen_items = [item for item in items if item.isPlayed]
 
-    to_unhide = {ep for ep in seen_eps if ep.summary.startswith(config['hidden_string'])}
+    if debug: print(f"Done sorting seen vs unseen; seen {len(seen_items)}, unseen {len(unseen_items)}, total {len(items)} items")
+
+    to_unhide = {item for item in seen_items if item.summary.startswith(config['hidden_string'])}
 
     if also_unhide:
         to_unhide.add(also_unhide)
 
-    # Also unhide all currently hidden episodes from ignored shows
-    ignored_to_unhide = [ep for ep in episodes
-                         if ep.grandparentTitle in config['ignored_shows']
-                         and ep.summary.startswith(config['hidden_string'])]
+    # Also unhide all currently hidden episodes from ignored shows + ignored movies
+    ignored_to_unhide = [item for item in items
+                         if should_ignore_item(item)
+                         and item.summary.startswith(config['hidden_string'])]
 
     to_unhide.update(ignored_to_unhide)
 
     if to_unhide:
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode restored, so we don't need this too
-            print(("Would restore" if args.dry_run else "Restoring") + f" {len(to_unhide)} summaries (recently watched episodes or ignored shows)")
-        restore_summaries(sorted(to_unhide, key=compare_episodes))
+            print(("Would restore" if args.dry_run else "Restoring") + f" summaries for {len(to_unhide)} recently watched (or ignored) items")
+        restore_summaries(sorted(to_unhide, key=compare_items))
     elif not args.quiet:
-        print("No watched episodes since last run")
+        print("No watched items since last run")
 
-    # Step 2: hide summaries of recently added, unseen episodes
+    # Step 2: hide summaries of recently added, unseen items
 
-    to_hide = {ep for ep in unseen_eps
-               if len(ep.summary.strip()) > 0
-               and ep.grandparentTitle not in config['ignored_shows']
-               and not ep.summary.startswith(config['hidden_string'])}
+    to_hide = {item for item in unseen_items
+               if len(item.summary.strip()) > 0
+               and not should_ignore_item(item)
+               and not item.summary.startswith(config['hidden_string'])}
 
     if also_hide:
         to_hide.add(also_hide)
@@ -208,10 +233,10 @@ def process(episodes, also_hide=None, also_unhide=None):
     if to_hide:
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode hidden, so we don't need this too
-            print(("Would hide" if args.dry_run else "Hiding") + f" {len(to_hide)} summaries (recently added episodes or unignored shows)")
-        hide_summaries(sorted(to_hide, key=compare_episodes))
+            print(("Would hide" if args.dry_run else "Hiding") + f" summaries for {len(to_hide)} recently added (or unignored) items")
+        hide_summaries(sorted(to_hide, key=compare_items))
     elif not args.quiet:
-        print("No new episodes to hide summaries for")
+        print("No new items to hide summaries for")
 
 if __name__=='__main__':
     args = parse_args()
@@ -228,24 +253,24 @@ if __name__=='__main__':
         print(f"Unable to connect to Plex server! Error from API: {e}")
         sys.exit(16)
 
-    episodes_by_guid = fetch_episodes(plex)
+    items_by_guid = fetch_items(plex)
 
     if args.restore_all:
-        restore_summaries(episodes_by_guid.values())
+        restore_summaries(items_by_guid.values())
     else:
-        also_hide_ep = None
-        also_unhide_ep = None
+        also_hide_item = None
+        also_unhide_item = None
 
         if args.also_hide:
             try:
-                also_hide_ep = episodes_by_guid[args.also_hide]
+                also_hide_item = items_by_guid[args.also_hide]
             except:
-                print(f"Failed to locate episode with GUID {args.also_hide} specified with --also-hide, ignoring", file=sys.stderr)
+                print(f"Failed to locate item with GUID {args.also_hide} specified with --also-hide, ignoring", file=sys.stderr)
 
         if args.also_unhide:
             try:
-                also_unhide_ep = episodes_by_guid[args.also_unhide]
+                also_unhide_item = items_by_guid[args.also_unhide]
             except:
-                print(f"Failed to locate episode with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
+                print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
 
-        process(episodes_by_guid.values(), also_hide_ep, also_unhide_ep)
+        process(items_by_guid.values(), also_hide_item, also_unhide_item)

@@ -7,17 +7,19 @@ plex_url = "http://192.168.x.x:32400"
 # A token looks something like: fIHGeXfEbda_3X_AB123
 plex_token = "..."
 
-# The text to show on Plex for episodes with their summmary hidden.
+# The text to show on Plex for episodes/movies with their summmary hidden.
 #
 # !! IMPORTANT !!
 # This cannot be changed after the script has been used for the first time!
-# The code decides whether an episode has been hidden or not by looking for this string,
-# so if you change it after hiding any summaries, those episodes will retain the old
+# The code decides whether an item has been hidden or not by looking for this string,
+# so if you change it after hiding any summaries, those items will retain the old
 # summary string until you change this back.
 hidden_string = "Summary hidden."
 
-# Plex libraries to scan for shows and episodes
+# Plex libraries to scan for shows and movies
 # Note: Change this -- you will receive warnings for libraries that don't exist!
+#
+# If you want to hide summaries for unseen movies as well as TV episodes, add your movie library/libraries here!
 libraries = ['TV Shows', 'TV Series']
 
 # Whether we should lock the summaries we edit or not.
@@ -25,16 +27,16 @@ libraries = ['TV Shows', 'TV Series']
 # If this is set to false, refreshing metadata in Plex will restore all summaries.
 lock_hidden_summaries = true
 
-# You can specify a list of shows to ignore.
-# Ignored shows always have their summaries visible.
+# You can specify a list of shows and movies to ignore.
+# Ignored shows/movies always have their summaries visible.
 # For example, you may want to show the summaries for shows you already know by heart,
 # or for certain shows (like comedy shows) where the summary doesn't really spoil anything.
 #
 # Specify this as a TOML multiline string. For example:
-# ignored_shows = """
+# ignored_items = """
 # Seinfeld
 # Stargate SG-1
 # """
 
-ignored_shows = """
+ignored_items = """
 """

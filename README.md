@@ -1,4 +1,4 @@
-A script to hide summaries (with potential spoilers) from unseen episodes in Plex.
+A script to hide summaries (with potential spoilers) from unseen episodes (and/or movies) in Plex.
 
 As of this writing (October 2023), this is new and only tested by me personally, but I've spent a fair bit of time trying to make it fit for release.  
 Please open a Github issue if things aren't working properly, or even if you just have questions!
@@ -7,14 +7,14 @@ Please open a Github issue if things aren't working properly, or even if you jus
 
 * Doesn't need to run on the Plex server -- can run on e.g. a Windows desktop with the Plex server on a NAS
 * Fairly performant: runs in a few seconds with a fairly large library
-* Ignore list for shows you want to leave untouched (all summaries showing, even when unwatched)
+* Choose exactly which libraries to include (can be TV libraries, movie libraries or both)
+* Ignore list for shows and individual movies you want to leave untouched (all summaries showing, even when unwatched)
 * Tested on Windows and Linux, but should run on just about anything that runs Python
 
 # Stuff left to do
 
 * Improve Plex login. The script currently requires a Plex token, fetched from a logged-in browser.
 * Allow thumbnail replacement/blurring (if requested, I wouldn't use it myself)
-* Support movie libraries; the script is currently only tested on TV shows
 
 # Installation
 
@@ -91,7 +91,7 @@ If you have any issues with this, open an issue and I'll look at adding proper P
 
 # Usage
 
-With no arguments, the script will hide the summaries from all unseen episodes (except those from ignored shows, see the configuration file), and *unhide* the summaries from all episodes you've seen since the last run.  
+With no arguments, the script will hide the summaries from all unseen episodes/movies (except those from ignored shows, see the configuration file), and *unhide* the summaries from all episodes/movies you've seen since the last run.  
 While the recommended usage is with Tautulli or using a task scheduler, make sure to run the script manually first, to ensure everything is correctly configured.
 
 ## With Tautulli
@@ -99,8 +99,8 @@ While the recommended usage is with Tautulli or using a task scheduler, make sur
 A nice way to use the script is together with **[Tautulli](https://tautulli.com/)**, which allows you to run scripts on certain Plex events.
 I have it set up to run on "Watched", "Recently added" and (because why not) "Plex Server Back Up".
 
-Under the "Arguments" tab, you can leave everything empty, except for Watched where I recommend using "\<episode\>--also-unhide plex://episode/{plex\_id}\</episode\>" instead.  
-There can be a race condition where Tautulli considers the episode watched and calls the script, but Plex has not marked it as watched, and so the script won't do anything.  
+Under the "Arguments" tab, you can leave everything empty, except for Watched where I recommend using "\<episode\>--also-unhide plex://episode/{plex\_id}\</episode\>\<movie\>--also-unhide plex://movie/{plex\_id}\</movie\>" instead.  
+There can be a race condition where Tautulli considers the item watched and calls the script, but Plex has not marked it as watched, and so the script won't do anything.  
 With the extra --also-unhide argument, the episode summary will be restored anyway.
 
 ## With Windows Task Scheduler
