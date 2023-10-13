@@ -8,6 +8,7 @@
 
 import os
 import sys
+import time
 import argparse
 import datetime
 import subprocess
@@ -22,8 +23,51 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 from plexapi.server import PlexServer
+from plexapi.alert import AlertListener
 
 config = {}
+
+class PlexListener:
+    def __init__(self, server):
+        self.lastUpdate = 0
+        self.alertListener = AlertListener(server, self._callback)
+        self.alertListener.start()
+
+    def _callback(self, msg):
+        if 'type' not in msg or 'size' not in msg:
+            return
+        try:
+            # I hate this, but can't find a much better way.
+            # try/except doesn't work because we need to check two cases even if the first raises an exception.
+            # These are the message types I've seen while unlocking, restoring and hiding summaries.
+            if (msg['type'] == 'timeline' and msg['size'] >= 1 and 'state' in msg['TimelineEntry'][0]) or \
+               (msg['type'] == 'activity' and msg['size'] >= 1 and 'Activity' in msg['ActivityNotification'][0] and 'type' in msg['ActivityNotification'][0]['Activity'] and
+                msg['ActivityNotification'][0]['Activity']['type'] in ('library.update.item.metadata', 'library.refresh.items')):
+
+                self.lastUpdate = time.time()
+        except:
+            return
+
+    def timeSinceLastUpdate(self):
+        if self.lastUpdate == 0:
+            self.lastUpdate = time.time()
+            return 0
+
+        return time.time() - self.lastUpdate
+
+    def waitForFinish(self, timeout):
+        if not args.quiet:
+            print("Waiting for Plex to finish processing.", end="", flush=True)
+
+        while self.timeSinceLastUpdate() < timeout:
+            if not args.quiet:
+                print(".", end="", flush=True)
+                time.sleep(0.5)
+            else:
+                time.sleep(0.1)
+
+        if not args.quiet:
+            print(" done", flush=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes and movies.\n\n' +
@@ -165,18 +209,30 @@ def hide_summaries(items):
         item.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
         if args.verbose: print(f"Hid summary for {item_title_string(item)}")
 
-def restore_summaries(items, force_restore = False):
+def restore_summaries(listener, items, force_restore = False):
     """ Restore the summaries for recently viewed items """
 
-    for item in items:
-        if not (item.summary.startswith(config['hidden_string']) or force_restore):
-            continue
+    to_restore = [item for item in items if (force_restore or item.summary.startswith(config['hidden_string']))]
 
+    if not args.quiet and not args.dry_run:
+        print("Unlocking summaries...")
+
+    for item in to_restore:
         if args.dry_run:
             print(f"Would restore summary for {item_title_string(item)}")
             continue
 
         item.editField("summary", item.summary, locked = False)
+
+    if args.dry_run:
+        return
+
+    listener.waitForFinish(2)
+
+    if not args.quiet:
+        print("Restoring summaries...")
+
+    for item in to_restore:
         item.refresh()
         if args.verbose: print(f"Restored summary for {item_title_string(item)}")
 
@@ -193,7 +249,7 @@ def should_ignore_item(item):
     elif item.type == 'movie':
         return item.title in config['ignored_items']
 
-def process(items, also_hide=None, also_unhide=None):
+def process(listener, items, also_hide=None, also_unhide=None):
 
     # Step 1: restore summaries of items we've seen (since last run)
 
@@ -218,7 +274,7 @@ def process(items, also_hide=None, also_unhide=None):
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode restored, so we don't need this too
             print(("Would restore" if args.dry_run else "Restoring") + f" summaries for {len(to_unhide)} recently watched (or ignored) items")
-        restore_summaries(sorted(to_unhide, key=compare_items))
+        restore_summaries(listener, sorted(to_unhide, key=compare_items))
     elif not args.quiet:
         print("No watched items since last run")
 
@@ -255,10 +311,13 @@ if __name__=='__main__':
         print(f"Unable to connect to Plex server! Error from API: {e}")
         sys.exit(16)
 
+    listener = PlexListener(plex)
+
     items_by_guid = fetch_items(plex)
 
     if args.restore_all:
-        restore_summaries(items_by_guid.values(), force_restore = True)
+        if not args.quiet: print("This can take a while.")
+        restore_summaries(listener, items_by_guid.values(), force_restore = True)
     else:
         also_hide_item = None
         also_unhide_item = None
@@ -275,4 +334,6 @@ if __name__=='__main__':
             except:
                 print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
 
-        process(items_by_guid.values(), also_hide_item, also_unhide_item)
+        process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
+
+    listener.waitForFinish(2)

@@ -5,3 +5,4 @@ PlexAPI==4.15.4
 requests==2.31.0
 tomli==2.0.1
 urllib3==2.0.6
+websocket-client==1.6.4
