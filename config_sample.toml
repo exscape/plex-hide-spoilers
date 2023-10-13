@@ -7,24 +7,26 @@ plex_url = "http://192.168.x.x:32400"
 # A token looks something like: fIHGeXfEbda_3X_AB123
 plex_token = "..."
 
-# The text to show on Plex for episodes/movies with their summmary hidden.
-#
-# !! IMPORTANT !!
-# This cannot be changed after the script has been used for the first time!
-# The code decides whether an item has been hidden or not by looking for this string,
-# so if you change it after hiding any summaries, those items will retain the old
-# summary string until you change this back.
-hidden_string = "Summary hidden."
-
 # Plex libraries to scan for shows and movies
 # Note: Change this -- you will receive warnings for libraries that don't exist!
 #
 # If you want to hide summaries for unseen movies as well as TV episodes, add your movie library/libraries here!
 libraries = ['TV Shows', 'TV Series']
 
+# The text to show in Plex for episodes/movies with their summmary hidden.
+#
+# !! IMPORTANT !!
+# In order to change this after you've used the script at least once, you should run --restore-all first, wait for
+# Plex to re-download all metadata, and only *then* change this.
+# If you simply change the text string, the script won't work properly, as it checks for this string to identify
+# which episodes/movies we've hidden the summary from, and previously hidden episodes won't be recognized as such.
+hidden_string = "Summary hidden."
+
 # Whether we should lock the summaries we edit or not.
 # Locked summaries won't be automatically overwritten by Plex when you refresh items.
 # If this is set to false, refreshing metadata in Plex will restore all summaries.
+#
+# Use the script with the --restore-all argument (which ignores this setting) to restore and unlock all summaries.
 lock_hidden_summaries = true
 
 # You can specify a list of shows and movies to ignore.
