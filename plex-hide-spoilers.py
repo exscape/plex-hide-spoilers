@@ -23,7 +23,6 @@ except ModuleNotFoundError:
 
 from plexapi.server import PlexServer
 
-debug = False
 config = {}
 
 def parse_args():
@@ -45,6 +44,9 @@ def parse_args():
     group.add_argument('--restore-all', action='store_true', help="Restore all hidden summaries (tell Plex to re-download them)")
     group.add_argument('--also-hide', metavar="plex://.../...", help="Additionally hide summary from one item (see README.md)")
     group.add_argument('--also-unhide', metavar="plex://.../...", help="Additionally unhide summary from one item (see README.md)")
+
+    # Print extra debug information; not shown in the help message
+    parser.add_argument('--debug', action="store_true", help=argparse.SUPPRESS)
 
     return parser.parse_args()
 
@@ -137,11 +139,11 @@ def fetch_items(plex):
                 for season in show:
                     for episode in season:
                         items_by_guid[episode.guid] = episode
-                        if debug: print(f"Found {item_title_string(episode)} ({episode.guid})")
+                        if args.debug: print(f"Found {item_title_string(episode)} ({episode.guid})")
         elif plex_section.type == 'movie':
             for movie in plex_section.all():
                 items_by_guid[movie.guid] = movie
-                if debug: print(f"Found {item_title_string(movie)} ({movie.guid})")
+                if args.debug: print(f"Found {item_title_string(movie)} ({movie.guid})")
 
     return items_by_guid
 
@@ -198,7 +200,7 @@ def process(items, also_hide=None, also_unhide=None):
     unseen_items = [item for item in items if not item.isPlayed]
     seen_items = [item for item in items if item.isPlayed]
 
-    if debug: print(f"Done sorting seen vs unseen; seen {len(seen_items)}, unseen {len(unseen_items)}, total {len(items)} items")
+    if args.debug: print(f"Done sorting seen vs unseen; seen {len(seen_items)}, unseen {len(unseen_items)}, total {len(items)} items")
 
     to_unhide = {item for item in seen_items if item.summary.startswith(config['hidden_string'])}
 
@@ -241,7 +243,7 @@ def process(items, also_hide=None, also_unhide=None):
 if __name__=='__main__':
     args = parse_args()
     config = read_config(args.config_path)
-    if debug:
+    if args.debug:
         args.verbose = True
         args.quiet = False
         print(f"Args: {args}")
