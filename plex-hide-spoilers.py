@@ -165,11 +165,11 @@ def hide_summaries(items):
         item.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
         if args.verbose: print(f"Hid summary for {item_title_string(item)}")
 
-def restore_summaries(items):
+def restore_summaries(items, force_restore = False):
     """ Restore the summaries for recently viewed items """
 
     for item in items:
-        if not item.summary.startswith(config['hidden_string']):
+        if not (item.summary.startswith(config['hidden_string']) or force_restore):
             continue
 
         if args.dry_run:
@@ -258,7 +258,7 @@ if __name__=='__main__':
     items_by_guid = fetch_items(plex)
 
     if args.restore_all:
-        restore_summaries(items_by_guid.values())
+        restore_summaries(items_by_guid.values(), force_restore = True)
     else:
         also_hide_item = None
         also_unhide_item = None
