@@ -66,7 +66,8 @@ Download the [latest binary release](https://github.com/exscape/plex-hide-spoile
 
 ### Using pip
 
-First ensure you have pip and venv installed (`apt install python3-pip python3-venv` on Debian, Ubuntu and derivatives).  
+First, you need at least Python 3.8 installed.  
+Next, sure you have pip and venv installed (`apt install python3-pip python3-venv` on Debian, Ubuntu and derivatives).  
 Then download the [latest source release](https://github.com/exscape/plex-hide-spoilers/releases/) from Github, unpack it somewhere, and run the following commands (as your user, not as root!):  
 
 ```bash
