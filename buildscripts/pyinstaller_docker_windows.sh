@@ -5,7 +5,15 @@ if [[ ! -f "plex-hide-spoilers.py" ]]; then
     exit 1
 fi
 
-rm -rf dist/windows/plex-hide-spoilers build
+SUFFIX="-master"
+
+if [[ $# == 1 ]]; then
+	SUFFIX="-$1"
+fi
+
+FILENAME="plex-hide-spoilers${SUFFIX}.zip"
+
+rm -rf dist/windows/plex-hide-spoilers build "${FILENAME}.zip"
 
 # 3.8 is the latest Python version that easily runs under Wine at the moment
 docker run --rm -v "$(pwd):/src/" pyinstaller-3.8-win64
@@ -15,5 +23,5 @@ cp -Rp licenses dist/windows/plex-hide-spoilers
 
 cd dist/windows
 
-echo "Creating .zip"
-zip -9 -r plex-hide-spoilers plex-hide-spoilers
+echo "Creating dist/windows/${FILENAME}"
+zip -9 -r "$FILENAME" plex-hide-spoilers

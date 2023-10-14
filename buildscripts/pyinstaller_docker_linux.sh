@@ -5,7 +5,15 @@ if [[ ! -f "plex-hide-spoilers.py" ]]; then
     exit 1
 fi
 
-rm -rf dist/linux/plex-hide-spoilers build
+SUFFIX="-master"
+
+if [[ $# == 1 ]]; then
+	SUFFIX="-$1"
+fi
+
+FILENAME="plex-hide-spoilers${SUFFIX}.tar.bz2"
+
+rm -rf dist/linux/plex-hide-spoilers build "$FILENAME"
 
 # Uses Docker to improve compatibility with older Linux systems
 # If we run Pyinstaller on Debian 12, the resulting files won't run on still-supported systems a year or two old.
@@ -16,5 +24,5 @@ cp -Rp licenses dist/linux/plex-hide-spoilers
 
 cd dist/linux
 
-echo "Creating .tar.bz2"
-tar cjf plex-hide-spoilers.tar.bz2 plex-hide-spoilers
+echo "Creating dist/linux/${FILENAME}"
+tar cjf "$FILENAME" plex-hide-spoilers
