@@ -10,9 +10,6 @@ import os
 import sys
 import time
 import argparse
-import datetime
-import subprocess
-from urllib.request import pathname2url
 
 try:
     # tomllib ships with Python 3.11+
@@ -29,9 +26,9 @@ config = {}
 
 class PlexListener:
     def __init__(self, server):
-        self.lastUpdate = 0
-        self.alertListener = AlertListener(server, self._callback)
-        self.alertListener.start()
+        self.last_update = 0
+        self.alert_listener = AlertListener(server, self._callback)
+        self.alert_listener.start()
 
     def _callback(self, msg):
         if 'type' not in msg or 'size' not in msg:
@@ -44,22 +41,22 @@ class PlexListener:
                (msg['type'] == 'activity' and msg['size'] >= 1 and 'Activity' in msg['ActivityNotification'][0] and 'type' in msg['ActivityNotification'][0]['Activity'] and
                 msg['ActivityNotification'][0]['Activity']['type'] in ('library.update.item.metadata', 'library.refresh.items')):
 
-                self.lastUpdate = time.time()
+                self.last_update = time.time()
         except:
             return
 
-    def timeSinceLastUpdate(self):
-        if self.lastUpdate == 0:
-            self.lastUpdate = time.time()
+    def time_since_last_update(self):
+        if self.last_update == 0:
+            self.last_update = time.time()
             return 0
 
-        return time.time() - self.lastUpdate
+        return time.time() - self.last_update
 
-    def waitForFinish(self, timeout = 2):
+    def wait_for_finish(self, timeout = 2):
         if not args.quiet:
             print("Waiting for Plex to finish processing...", end="", flush=True)
 
-        while self.timeSinceLastUpdate() < timeout:
+        while self.time_since_last_update() < timeout:
             if not args.quiet:
                 print(".", end="", flush=True)
                 time.sleep(0.5)
@@ -116,9 +113,8 @@ def read_config(config_path = None):
         sys.exit(1)
 
     try:
-        conf_file = open(config_path, "rb")
-        config = tomllib.load(conf_file)
-        conf_file.close()
+        with open(config_path, "rb") as conf_file:
+            config = tomllib.load(conf_file)
     except FileNotFoundError:
         print(f"Configuration file ({config_path}) not found!\nDo you need to copy config_sample.toml to config.toml and edit it?")
         sys.exit(1)
@@ -129,20 +125,20 @@ def read_config(config_path = None):
         print(f"Unable to read configuration file ({config_path}) -- no read permission?")
         sys.exit(4)
 
-    if config is None or type(config) != dict:
+    if config is None or not isinstance(config, dict):
         print("Configuration file invalid")
         sys.exit(2)
 
-    if not 'lock_hidden_summaries' in config:
+    if 'lock_hidden_summaries' not in config:
         config['lock_hidden_summaries'] = True
 
     if 'ignored_items' in config:
         config['ignored_items'] = list(filter(lambda x: len(x) > 0, config['ignored_items'].splitlines()))
-    if not 'ignored_items' in config or type(config['ignored_items']) != list:
+    if 'ignored_items' not in config or not isinstance(config['ignored_items'], list):
         config['ignored_items'] = []
 
     for setting in ('plex_url', 'plex_token', 'hidden_string', 'libraries'):
-        if not setting in config or len(config[setting]) == 0:
+        if setting not in config or len(config[setting]) == 0:
             print(f"No {setting} specified in config.toml")
             sys.exit(8)
 
@@ -195,7 +191,7 @@ def item_title_string(item):
     """ Create a string to describe an item. """
     if item.type == 'episode':
         return f"{item.grandparentTitle} season {item.parentIndex} episode {item.index} \"{item.title}\""
-    elif item.type == 'movie':
+    if item.type == 'movie':
         return f"{item.title} ({item.year})"
 
 def hide_summaries(items):
@@ -230,18 +226,18 @@ def restore_summaries(listener, items, force_restore = False):
         if args.verbose: print(f"Restored summary for {item_title_string(item)}")
 
     # All API requests are now sent to Plex, but it may not have finished downloading summaries yet
-    listener.waitForFinish()
+    listener.wait_for_finish()
 
     if not args.quiet: print("Beginning verification...")
 
     # Some requests seem to randomly fail (for me usually 1 or 2 out of about 1000); we want to try downloading them again
-    for i in range(3):
+    for _ in range(3):
         if args.debug: print("Start metadata reload...")
         for item in to_restore:
             item.reload()
         if args.debug: print("Reload finished")
 
-        to_restore = [item for item in to_restore if (item.summary == IN_PROGRESS or item.summary == config['hidden_string'])]
+        to_restore = [item for item in to_restore if item.summary in (IN_PROGRESS, config['hidden_string'])]
         if not to_restore:
             if not args.quiet: print("All summaries were successfully restored")
             return
@@ -255,9 +251,9 @@ def restore_summaries(listener, items, force_restore = False):
         for item in to_restore:
             item.refresh()
 
-        listener.waitForFinish()
+        listener.wait_for_finish()
 
-    failed = [item for item in to_restore if (item.summary == IN_PROGRESS or item.summary == config['hidden_string'])]
+    failed = [item for item in to_restore if item.summary in (IN_PROGRESS, config['hidden_string'])]
 
     if not failed and not args.quiet:
         print("All summaries were successfully restored")
@@ -278,7 +274,7 @@ def compare_items(i):
 def should_ignore_item(item):
     if item.type == 'episode':
         return item.grandparentTitle in config['ignored_items']
-    elif item.type == 'movie':
+    if item.type == 'movie':
         return item.title in config['ignored_items']
 
 def process(listener, items, also_hide=None, also_unhide=None):
@@ -368,4 +364,4 @@ if __name__=='__main__':
 
         process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
 
-    listener.waitForFinish()
+    listener.wait_for_finish()
