@@ -5,10 +5,10 @@ if [[ ! -f "plex-hide-spoilers.py" ]]; then
     exit 1
 fi
 
-SUFFIX="-master"
+SUFFIX="-master-windows"
 
 if [[ $# == 1 ]]; then
-	SUFFIX="-$1"
+	SUFFIX="-$1-windows"
 fi
 
 FILENAME="plex-hide-spoilers${SUFFIX}.zip"
