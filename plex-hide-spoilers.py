@@ -25,12 +25,14 @@ from plexapi.alert import AlertListener
 config = {}
 
 class PlexListener:
+    """ Listen to Plex activity (to allow us to wait for it to finish async processing) """
     def __init__(self, server):
         self.last_update = 0
         self.alert_listener = AlertListener(server, self._callback)
         self.alert_listener.start()
 
     def _callback(self, msg):
+        """ Receive messages from Plex """
         if 'type' not in msg or 'size' not in msg:
             return
         try:
@@ -38,14 +40,16 @@ class PlexListener:
             # try/except doesn't work because we need to check two cases even if the first raises an exception.
             # These are the message types I've seen while unlocking, restoring and hiding summaries.
             if (msg['type'] == 'timeline' and msg['size'] >= 1 and 'state' in msg['TimelineEntry'][0]) or \
-               (msg['type'] == 'activity' and msg['size'] >= 1 and 'Activity' in msg['ActivityNotification'][0] and 'type' in msg['ActivityNotification'][0]['Activity'] and
+               (msg['type'] == 'activity' and msg['size'] >= 1 and 'Activity' in msg['ActivityNotification'][0] and \
+                'type' in msg['ActivityNotification'][0]['Activity'] and \
                 msg['ActivityNotification'][0]['Activity']['type'] in ('library.update.item.metadata', 'library.refresh.items')):
 
                 self.last_update = time.time()
-        except:
+        except (KeyError, IndexError):
             return
 
     def time_since_last_update(self):
+        """ Returns the time (in seconds) since we last received a status update """
         if self.last_update == 0:
             self.last_update = time.time()
             return 0
@@ -53,6 +57,7 @@ class PlexListener:
         return time.time() - self.last_update
 
     def wait_for_finish(self, timeout = 2):
+        """ Waits for Plex to finish async processing (until timeout seconds have passed since the last message) """
         if not args.quiet:
             print("Waiting for Plex to finish processing...", end="", flush=True)
 
@@ -67,6 +72,7 @@ class PlexListener:
             print(" done", flush=True)
 
 def parse_args():
+    """ Parses command line arguments and returns the "args" object """
     parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes and movies.\n\n' +
         'When run without options, this script will hide the summaries for all unwatched items (episodes + movies) ' +
         '(except for shows ignored in the configuration file) in the chosen libraries, and restore the summaries for all items ' +
@@ -92,6 +98,7 @@ def parse_args():
     return parser.parse_args()
 
 def read_config(config_path = None):
+    """ Read the configuration file and return a config object """
     global config
 
     if not config_path:
@@ -105,7 +112,8 @@ def read_config(config_path = None):
             config_dir = os.path.dirname(config_dir)
             config_path = os.path.join(config_dir, "config.toml")
             if not os.path.exists(config_path):
-                print(f"Configuration file (config.toml) not found!\nI looked in \"{old_config_dir}\" and \"{config_dir}\".\nDo you need to copy config_sample.toml to config.toml and edit it?")
+                print(f"Configuration file (config.toml) not found!\nI looked in \"{old_config_dir}\" and \"{config_dir}\".\n" +
+                       "Do you need to copy config_sample.toml to config.toml and edit it?")
                 sys.exit(1)
 
     if os.path.isdir(config_path):
@@ -154,6 +162,7 @@ def read_config(config_path = None):
     return config
 
 def get_plex_sections(plex):
+    """ Fetch a list of Plex LibrarySection objects from our config file list of libraries """
     plex_sections = []
 
     for library in config['libraries']:
@@ -169,6 +178,7 @@ def get_plex_sections(plex):
     return plex_sections
 
 def fetch_items(plex):
+    """ Fetch objects representing all episodes/movies from Plex """
     if args.verbose: print("Fetching items from Plex...")
 
     items_by_guid = {}
@@ -272,12 +282,15 @@ def compare_items(i):
             i.index if i.type == 'episode' else 0) # Episode number for TV shows
 
 def should_ignore_item(item):
+    """ Returns true for items we should ignore (never hide summaries for) """
+    assert item.type in ('episode', 'movie')
     if item.type == 'episode':
         return item.grandparentTitle in config['ignored_items']
     if item.type == 'movie':
         return item.title in config['ignored_items']
 
 def process(listener, items, also_hide=None, also_unhide=None):
+    """ The workhorse method. Hide recently added summaries, unhide recently watched summaries. """
 
     # Step 1: restore summaries of items we've seen (since last run)
 
@@ -301,7 +314,8 @@ def process(listener, items, also_hide=None, also_unhide=None):
     if to_unhide:
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode restored, so we don't need this too
-            print(("Would restore" if args.dry_run else "Restoring") + f" summaries for {len(to_unhide)} recently watched (or ignored) items")
+            print(("Would restore" if args.dry_run else "Restoring") + \
+                  f" summaries for {len(to_unhide)} recently watched (or ignored) items")
         restore_summaries(listener, sorted(to_unhide, key=compare_items))
     elif not args.quiet:
         print("No watched items since last run")
@@ -324,15 +338,8 @@ def process(listener, items, also_hide=None, also_unhide=None):
     elif not args.quiet:
         print("No new items to hide summaries for")
 
-if __name__=='__main__':
-    args = parse_args()
-    config = read_config(args.config_path)
-    if args.debug:
-        args.verbose = True
-        args.quiet = False
-        print(f"Args: {args}")
-        print(f"Config dump: {config}")
-
+def main():
+    """ The main method. To avoid polluting the global namespace with variables. """
     try:
         plex = PlexServer(config['plex_url'], config['plex_token'])
     except Exception as e:
@@ -365,3 +372,15 @@ if __name__=='__main__':
         process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
 
     listener.wait_for_finish()
+
+if __name__=='__main__':
+    # Life is so much easier with these in the module/global namespace
+    args = parse_args()
+    config = read_config(args.config_path)
+    if args.debug:
+        args.verbose = True
+        args.quiet = False
+        print(f"Args: {args}")
+        print(f"Config dump: {config}")
+
+    main()
