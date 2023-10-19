@@ -330,6 +330,11 @@ def process(listener, items, also_hide=None, also_unhide=None):
     if also_hide:
         to_hide.add(also_hide)
 
+    # If --also-unhide is used on an item marked as unwatched, we need to handle this manually, or
+    # it will get re-hidden immediately.
+    if also_unhide and also_unhide in to_hide:
+        to_hide.remove(also_unhide)
+
     if to_hide:
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode hidden, so we don't need this too
