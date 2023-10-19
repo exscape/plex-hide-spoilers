@@ -292,6 +292,8 @@ def should_ignore_item(item):
 def process(listener, items, also_hide=None, also_unhide=None):
     """ The workhorse method. Hide recently added summaries, unhide recently watched summaries. """
 
+    need_to_wait = False
+
     # Step 1: restore summaries of items we've seen (since last run)
 
     unseen_items = [item for item in items if not item.isPlayed]
@@ -317,6 +319,7 @@ def process(listener, items, also_hide=None, also_unhide=None):
             print(("Would restore" if args.dry_run else "Restoring") + \
                   f" summaries for {len(to_unhide)} recently watched (or ignored) items")
         restore_summaries(listener, sorted(to_unhide, key=compare_items))
+        # need_to_wait should still be False here, since restore_summaries waits and verifies prior to returning
     elif not args.quiet:
         print("No watched items since last run")
 
@@ -340,8 +343,12 @@ def process(listener, items, also_hide=None, also_unhide=None):
             # If verbose, we print each episode hidden, so we don't need this too
             print(("Would hide" if args.dry_run else "Hiding") + f" summaries for {len(to_hide)} recently added (or unignored) items")
         hide_summaries(sorted(to_hide, key=compare_items))
+        if not args.dry_run:
+            need_to_wait = True
     elif not args.quiet:
         print("No new items to hide summaries for")
+
+    return need_to_wait
 
 def main():
     """ The main method. To avoid polluting the global namespace with variables. """
@@ -374,9 +381,9 @@ def main():
             except:
                 print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
 
-        process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
-
-    listener.wait_for_finish()
+        need_to_wait = process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
+        if need_to_wait:
+            listener.wait_for_finish()
 
 if __name__=='__main__':
     # Life is so much easier with these in the module/global namespace
