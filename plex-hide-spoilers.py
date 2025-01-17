@@ -181,6 +181,16 @@ def has_hidden_field(item):
     return summary.startswith(config['hidden_summary_string']) or summary.startswith(config['in_progress_string']) or \
            title.startswith(config['hidden_title_string']) or title.startswith(config['in_progress_string'])
 
+def has_field_to_hide(item):
+    """ True if an item has at least one field visible that should be hidden. """
+    summary = item.summary
+    title = item.title
+
+    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
+    return (config['hide_summaries'] and len(summary) > 0 and not summary.startswith(config['hidden_summary_string'])) or \
+           (config['hide_titles'] and item.type == 'episode' and len(title) > 0 and not title.startswith(config['hidden_title_string'])) or \
+           (config['hide_thumbnails'] and item.type == 'episode' and item.thumb and item.thumb not in (item.parentThumb, item.grandparentThumb))
+
 def get_plex_sections(plex):
     """ Fetch a list of Plex LibrarySection objects from our config file list of libraries """
     plex_sections = []
@@ -357,10 +367,11 @@ def process(listener, items, also_hide=None, also_unhide=None):
         print("No watched items since last run")
 
     # Step 2: hide fields of recently added, unseen items
+    # This also hides additional fields of items when settings have changed, e.g. hide_thumbnails changed from false to true
 
     to_hide = {item for item in unseen_items
                if not should_ignore_item(item)
-               and not has_hidden_field(item)}
+               and has_field_to_hide(item)}
 
     if also_hide:
         to_hide.add(also_hide)
