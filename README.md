@@ -1,6 +1,6 @@
-A script to hide summaries (with potential spoilers) from unseen episodes (and/or movies) in Plex.
+A script to hide summaries (with potential spoilers) from unseen episodes (and/or movies) in Plex.  
+Episode titles and thumbnails can also be hidden.
 
-As of this writing (October 2023), this is new and only tested by me personally, but I've spent a fair bit of time trying to make it fit for release.  
 Please open a Github issue if things aren't working properly, or even if you just have questions!
 
 # Features
@@ -14,7 +14,6 @@ Please open a Github issue if things aren't working properly, or even if you jus
 # Stuff left to do
 
 * Improve Plex login. The script currently requires a Plex token, fetched from a logged-in browser.
-* Allow thumbnail replacement/blurring (if requested, I wouldn't use it myself)
 
 # Installation
 
@@ -34,7 +33,7 @@ To install this way, download the [latest binary release](https://github.com/exs
 If you want to do it the harder way, you're somewhat on your own, as I have little experience doing this on Windows.  
 I only recommend installing this way if you know how without the instructions, really, but open a Github issue if these instructions don't work and I'll try to help (and update the instructions).
 
-First, make sure you have [Python](https://www.python.org/downloads/) installed. Version 3.8 or higher should work, but generally speaking, download the latest version available, as of this writing 3.12.0. Let the installer add Python to your PATH, and if needed, reboot.
+First, make sure you have [Python](https://www.python.org/downloads/) installed. Version 3.8 or higher should work, but generally speaking, download the latest version available, as of this writing 3.13. Let the installer add Python to your PATH, and if needed, reboot.
 
 Download the [latest source release](https://github.com/exscape/plex-hide-spoilers/releases/), and unzip it to your chosen install folder.  
 Open up a command prompt or Powershell, cd to the folder and run:
