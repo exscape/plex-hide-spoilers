@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2023 Thomas Backman.
+# Copyright 2023-2025 Thomas Backman.
 # See LICENSE.txt for further license information.
 
 # Note: Throughout this file, "item" is used to refer to a TV episode *or* a movie.
@@ -73,9 +73,9 @@ class PlexListener:
 
 def parse_args():
     """ Parses command line arguments and returns the "args" object """
-    parser = argparse.ArgumentParser(description='Hide Plex summaries from unseen TV episodes and movies.\n\n' +
-        'When run without options, this script will hide the summaries for all unwatched items (episodes + movies) ' +
-        '(except for shows ignored in the configuration file) in the chosen libraries, and restore the summaries for all items ' +
+    parser = argparse.ArgumentParser(description='Hide Plex summaries (and more) from unseen TV episodes and movies.\n\n' +
+        'When run without options, this script will hide the fields selected in the config file for all unwatched items (episodes + movies) -- ' +
+        'except for shows ignored in the configuration file -- in the chosen libraries, and restore the hidden fields for all items ' +
         'watched since the last run.\n' +
         "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -88,9 +88,9 @@ def parse_args():
     parser.add_argument('--config-path', metavar="PATH", help="Path to the configuration file (config.toml)")
 
     group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument('--restore-all', action='store_true', help="Restore all hidden summaries (tell Plex to re-download them)")
-    group.add_argument('--also-hide', metavar="plex://.../...", help="Additionally hide summary from one item (see README.md)")
-    group.add_argument('--also-unhide', metavar="plex://.../...", help="Additionally unhide summary from one item (see README.md)")
+    group.add_argument('--restore-all', action='store_true', help="Restore all hidden fields (tell Plex to re-download them)")
+    group.add_argument('--also-hide', metavar="plex://.../...", help="Additionally hide fields from one item (see README.md)")
+    group.add_argument('--also-unhide', metavar="plex://.../...", help="Additionally unhide fields from one item (see README.md)")
 
     # Print extra debug information; not shown in the help message
     parser.add_argument('--debug', action="store_true", help=argparse.SUPPRESS)
@@ -137,29 +137,49 @@ def read_config(config_path = None):
         print("Configuration file invalid")
         sys.exit(2)
 
-    if 'lock_hidden_summaries' not in config:
-        config['lock_hidden_summaries'] = True
-
     if 'ignored_items' in config:
         config['ignored_items'] = list(filter(lambda x: len(x) > 0, config['ignored_items'].splitlines()))
     if 'ignored_items' not in config or not isinstance(config['ignored_items'], list):
         config['ignored_items'] = []
 
-    for setting in ('plex_url', 'plex_token', 'hidden_string', 'libraries'):
-        if setting not in config or len(config[setting]) == 0:
-            print(f"No {setting} specified in config.toml")
-            sys.exit(8)
+    errors = []
+    for setting in ('plex_url', 'plex_token', 'hidden_summary_string', 'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'libraries'):
+        if setting not in config or (type(config[setting]) == 'str' and len(config[setting]) == 0):
+            errors.append(setting)
+            error_found = True
+    if errors:
+        print("One or more settings is missing from config.toml -- please see config_sample.toml and update your config file")
+        for error in errors:
+            print(f"* {error}")
+        sys.exit(8)
+
+    if config['hide_thumbnails'] and not (config['hide_summaries'] or config['hide_titles']):
+        print("Your config is set to hide thumbnails only, and not summaries or titles. This configuration is unfortunately not supported, "
+              "as the edited title or summary is needed to identify which items are edited by the script, and which are unmodified.")
+        print("If you want to hide thumbnails, enable hide_summaries or hide_titles as well.")
+        sys.exit(2)
 
     for setting in config:
         if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries',
-                           'ignored_items', 'lock_hidden_summaries'):
+                           'ignored_items', 'lock_hidden_summaries', 'hidden_summary_string', 'hidden_title_string', 'lock_edited_fields',
+                           'hide_summaries', 'hide_thumbnails', 'hide_titles'):
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
         print("You need to edit config.toml and change the Plex server settings to match your server!")
         sys.exit(2)
 
+    # Not intended as a user-facing setting, but fits in config anyway
+    config['in_progress_string'] = "(Restore in progress...)"
+
     return config
+
+def has_hidden_field(item):
+    """ True if the item has had its summary or title hidden by this script """
+    summary = item.summary
+    title = item.title
+    return summary.startswith(config['hidden_summary_string']) or summary.startswith(config['in_progress_string']) or \
+           title.startswith(config['hidden_title_string']) or title.startswith(config['in_progress_string'])
 
 def get_plex_sections(plex):
     """ Fetch a list of Plex LibrarySection objects from our config file list of libraries """
@@ -204,36 +224,45 @@ def item_title_string(item):
     if item.type == 'movie':
         return f"{item.title} ({item.year})"
 
-def hide_summaries(items):
-    """ Hides/removes the summaries of ALL items in the list. """
+def hide_fields(items):
+    """ Hides/removes the selected fields of ALL items in the list. """
 
     for item in items:
         if args.dry_run:
-            print(f"Would hide summary for {item_title_string(item)}")
+            print(f"Would hide selected fields for {item_title_string(item)}")
             continue
 
-        item.editField("summary", config['hidden_string'], locked = config['lock_hidden_summaries'])
-        if args.verbose: print(f"Hid summary for {item_title_string(item)}")
+        if config['hide_summaries']:
+            item.editField("summary", config['hidden_summary_string'], locked = config['lock_edited_fields'])
 
-def restore_summaries(listener, items, force_restore = False):
-    """ Restore the summaries for recently viewed items """
+        if config['hide_titles'] and item.type == 'episode':
+            item.editField("title", config['hidden_title_string'], locked = config['lock_edited_fields'])
 
-    IN_PROGRESS = "Summary restore in progress..."
+        if config['hide_thumbnails'] and item.type == 'episode':
+            item.editField("thumb", "", locked = config['lock_edited_fields'])
 
-    to_restore = [item for item in items if (item.summary.startswith(config['hidden_string']) or force_restore)]
+        if args.verbose: print(f"Hid selected fields for {item_title_string(item)}")
+
+def restore_fields(listener, items, force_restore = False):
+    """ Restore all fields for ALL edited items in the list. """
+
+    to_restore = [item for item in items if (force_restore or has_hidden_field(item))]
 
     if args.dry_run:
         for item in to_restore:
-            print(f"Would restore summary for {item_title_string(item)}")
+            print(f"Would restore fields for {item_title_string(item)}")
         return
 
     for item in to_restore:
-        if len(item.summary.strip()) > 0:
-            # If we write to an item with no summary (because Plex couldn't find one), that IN_PROGRESS summary
-            # will remain even after you refresh metadata! We don't want that.
-            item.editField("summary", IN_PROGRESS, locked = False)
+        if item.summary == config['hidden_summary_string']:
+            item.editField("summary", config['in_progress_string'], locked = False)
+        if item.type == 'episode' and item.title == config['hidden_title_string']:
+            item.editField("title", config['in_progress_string'], locked = False)
+        if item.type == 'episode' and item.thumb == "":
+            item.editField("thumb", "", locked = False)
+
         item.refresh()
-        if args.verbose: print(f"Restored summary for {item_title_string(item)}")
+        if args.verbose: print(f"Restored fields for {item_title_string(item)}")
 
     # All API requests are now sent to Plex, but it may not have finished downloading summaries yet
     listener.wait_for_finish()
@@ -247,13 +276,13 @@ def restore_summaries(listener, items, force_restore = False):
             item.reload()
         if args.debug: print("Reload finished")
 
-        to_restore = [item for item in to_restore if item.summary in (IN_PROGRESS, config['hidden_string'])]
+        to_restore = [item for item in to_restore if has_hidden_field(item)]
         if not to_restore:
-            if not args.quiet: print("All summaries were successfully restored")
+            if not args.quiet: print("All fields were successfully restored")
             return
 
         if not args.quiet:
-            print(f"Retrying {len(to_restore)} items where Plex failed to download summaries...")
+            print(f"Retrying {len(to_restore)} items where Plex failed to restore fields...")
             if args.verbose:
                 for item in to_restore:
                     print(f"   Retrying {item_title_string(item)}")
@@ -263,16 +292,22 @@ def restore_summaries(listener, items, force_restore = False):
 
         listener.wait_for_finish()
 
-    failed = [item for item in to_restore if item.summary in (IN_PROGRESS, config['hidden_string'])]
+    failed = [item for item in to_restore if has_hidden_field(item)]
 
     if not failed and not args.quiet:
-        print("All summaries were successfully restored")
+        print("All fields were successfully restored")
         return
 
     for item in failed:
-        # Clear the summary, since otherwise it will be either hidden or "Summary restore in progress..." which isn't true
-        item.editField("summary", "", locked = False)
-        print(f"Failed to restore summary for {item_title_string(item)}")
+        # Clear any "in progress" fields for the failed items, and make sure the fields are not locked
+        if len(item.summary) == 0 or item.summary == config['in_progress_string']:
+            item.editField("summary", "", locked = False)
+        if len(item.title) == 0 or item.title == config['in_progress_string']:
+            item.editField("title", "", locked = False)
+        if item.thumb == "":
+            item.editField("thumb", "", locked = False)
+
+        print(f"Failed to restore fields for {item_title_string(item)}")
 
 def compare_items(i):
     """ Create an ordering between items: first shows (by title, season and episode), then movies (by title and year). """
@@ -282,7 +317,7 @@ def compare_items(i):
             i.index if i.type == 'episode' else 0) # Episode number for TV shows
 
 def should_ignore_item(item):
-    """ Returns true for items we should ignore (never hide summaries for) """
+    """ Returns true for items we should ignore (never hide any fields for) """
     assert item.type in ('episode', 'movie')
     if item.type == 'episode':
         return item.grandparentTitle in config['ignored_items']
@@ -290,26 +325,24 @@ def should_ignore_item(item):
         return item.title in config['ignored_items']
 
 def process(listener, items, also_hide=None, also_unhide=None):
-    """ The workhorse method. Hide recently added summaries, unhide recently watched summaries. """
+    """ The workhorse method. Hide fields for recently added items, unhide for recently watched items. """
 
     need_to_wait = False
 
-    # Step 1: restore summaries of items we've seen (since last run)
+    # Step 1: restore fields of items we've seen (since last run)
 
     unseen_items = [item for item in items if not item.isPlayed]
     seen_items = [item for item in items if item.isPlayed]
 
     if args.debug: print(f"Done sorting seen vs unseen; seen {len(seen_items)}, unseen {len(unseen_items)}, total {len(items)} items")
 
-    to_unhide = {item for item in seen_items if item.summary.startswith(config['hidden_string'])}
+    to_unhide = {item for item in seen_items if has_hidden_field(item)}
 
     if also_unhide:
         to_unhide.add(also_unhide)
 
     # Also unhide all currently hidden episodes from ignored shows + ignored movies
-    ignored_to_unhide = [item for item in items
-                         if should_ignore_item(item)
-                         and item.summary.startswith(config['hidden_string'])]
+    ignored_to_unhide = [item for item in items if should_ignore_item(item) and has_hidden_field(item)]
 
     to_unhide.update(ignored_to_unhide)
 
@@ -317,18 +350,17 @@ def process(listener, items, also_hide=None, also_unhide=None):
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode restored, so we don't need this too
             print(("Would restore" if args.dry_run else "Restoring") + \
-                  f" summaries for {len(to_unhide)} recently watched (or ignored) items")
-        restore_summaries(listener, sorted(to_unhide, key=compare_items))
-        # need_to_wait should still be False here, since restore_summaries waits and verifies prior to returning
+                  f" fields for {len(to_unhide)} recently watched (or ignored) items")
+        restore_fields(listener, sorted(to_unhide, key=compare_items))
+        # need_to_wait should still be False here, since restore_fields waits and verifies prior to returning
     elif not args.quiet:
         print("No watched items since last run")
 
-    # Step 2: hide summaries of recently added, unseen items
+    # Step 2: hide fields of recently added, unseen items
 
     to_hide = {item for item in unseen_items
-               if len(item.summary.strip()) > 0
-               and not should_ignore_item(item)
-               and not item.summary.startswith(config['hidden_string'])}
+               if not should_ignore_item(item)
+               and not has_hidden_field(item)}
 
     if also_hide:
         to_hide.add(also_hide)
@@ -341,12 +373,12 @@ def process(listener, items, also_hide=None, also_unhide=None):
     if to_hide:
         if (args.dry_run or not args.quiet) and not args.verbose:
             # If verbose, we print each episode hidden, so we don't need this too
-            print(("Would hide" if args.dry_run else "Hiding") + f" summaries for {len(to_hide)} recently added (or unignored) items")
-        hide_summaries(sorted(to_hide, key=compare_items))
+            print(("Would hide" if args.dry_run else "Hiding") + f" fields for {len(to_hide)} recently added (or unignored) items")
+        hide_fields(sorted(to_hide, key=compare_items))
         if not args.dry_run:
             need_to_wait = True
     elif not args.quiet:
-        print("No new items to hide summaries for")
+        print("No new items to hide fields for")
 
     return need_to_wait
 
@@ -364,7 +396,7 @@ def main():
 
     if args.restore_all:
         if not args.quiet: print("This can take a while.")
-        restore_summaries(listener, items_by_guid.values(), force_restore = True)
+        restore_fields(listener, items_by_guid.values(), force_restore = True)
     else:
         also_hide_item = None
         also_unhide_item = None
