@@ -7,6 +7,7 @@
 # Most code works the same regardless of type, though some code can't be shared.
 
 import os
+import re
 import sys
 import time
 import argparse
@@ -70,6 +71,18 @@ class PlexListener:
 
         if not args.quiet:
             print(" done", flush=True)
+
+class Action:
+    def __init__(self, item, action, field):
+        # Lazy man's enums
+        assert action in ('hide', 'restore')
+        assert field in ('summary', 'title', 'thumb')
+        self.item = item
+        self.action = action
+        self.field = field
+
+    def __repr__(self):
+        return f"{action} {field} of {item_title_string(item)}"
 
 def parse_args():
     """ Parses command line arguments and returns the "args" object """
@@ -138,7 +151,7 @@ def read_config(config_path = None):
         sys.exit(2)
 
     if 'ignored_items' in config:
-        config['ignored_items'] = list(filter(lambda x: len(x) > 0, config['ignored_items'].splitlines()))
+        config['ignored_items'] = [stripped for line in config['ignored_items'].splitlines() if len(stripped := line.strip()) > 0]
     if 'ignored_items' not in config or not isinstance(config['ignored_items'], list):
         config['ignored_items'] = []
 
@@ -174,22 +187,53 @@ def read_config(config_path = None):
 
     return config
 
-def has_hidden_field(item):
+def has_summary(item):
+    return len(item.summary) > 0 and not has_hidden_summary(item)
+
+def has_title(item):
+    return len(item.title) > 0 and not has_hidden_title(item) and not generic_title.match(item.title)
+
+def has_thumbnail(item):
+    return item.thumb and len(item.thumb) > 0 and not has_hidden_thumbnail(item)
+
+def has_hidden_summary(item):
+    return item.summary.startswith(config['hidden_summary_string']) or item.summary.startswith(config['in_progress_string'])
+
+def has_hidden_title(item):
+    return item.title.startswith(config['hidden_title_string']) or item.title.startswith(config['in_progress_string'])
+
+def has_hidden_thumbnail(item):
+    # TODO: I'm not sure if this is always a valid or not; I can only say that it works for me(tm).
+    # Worst-case, it could cause the script to process an item every time it's run.
+    return item.type == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb)
+
+def has_any_hidden_field(item):
     """ True if the item has had its summary or title hidden by this script """
-    summary = item.summary
-    title = item.title
-    return summary.startswith(config['hidden_summary_string']) or summary.startswith(config['in_progress_string']) or \
-           title.startswith(config['hidden_title_string']) or title.startswith(config['in_progress_string'])
+    return has_hidden_summary(item) or has_hidden_title(item) or has_hidden_thumbnail(item)
 
-def has_field_to_hide(item):
-    """ True if an item has at least one field visible that should be hidden. """
-    summary = item.summary
-    title = item.title
-
-    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
-    return (config['hide_summaries'] and len(summary) > 0 and not summary.startswith(config['hidden_summary_string'])) or \
-           (config['hide_titles'] and item.type == 'episode' and len(title) > 0 and not title.startswith(config['hidden_title_string'])) or \
-           (config['hide_thumbnails'] and item.type == 'episode' and item.thumb and item.thumb not in (item.parentThumb, item.grandparentThumb))
+#def has_field_to_hide(item):
+#    """ True if an item has at least one field visible that should be hidden. """
+#    summary = item.summary
+#    title = item.title
+#    t = item.type
+#
+#    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
+#    return (not item.isPlayed) and \
+#           (config['hide_summaries'] and len(summary) > 0 and not summary.startswith(config['hidden_summary_string'])) or \
+#           (config['hide_titles'] and t == 'episode' and len(title) > 0 and not title.startswith(config['hidden_title_string'])) or \
+#           (config['hide_thumbnails'] and t == 'episode' and item.thumb and item.thumb not in (item.parentThumb, item.grandparentThumb))
+#
+#def has_field_to_show(item):
+#    """ True if an item has at least one field hidden that should be visible. """
+#    summary = item.summary
+#    title = item.title
+#    t = item.type
+#
+#    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
+#    return (item.isPlayed and has_any_hidden_field(item)) or \
+#           (not config['hide_summaries'] and len(summary) > 0 and summary.startswith(config['hidden_summary_string'])) or \
+#           (not config['hide_titles'] and t == 'episode' and len(title) > 0 and title.startswith(config['hidden_title_string'])) or \
+#           (not config['hide_thumbnails'] and t == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb))
 
 def get_plex_sections(plex):
     """ Fetch a list of Plex LibrarySection objects from our config file list of libraries """
@@ -209,7 +253,7 @@ def get_plex_sections(plex):
 
 def fetch_items(plex):
     """ Fetch objects representing all episodes/movies from Plex """
-    if args.verbose: print("Fetching items from Plex...")
+    if not args.quiet: print("Fetching items from Plex...")
 
     items_by_guid = {}
 
@@ -229,83 +273,89 @@ def fetch_items(plex):
 
 def item_title_string(item):
     """ Create a string to describe an item. """
-    if item.type == 'episode':
+    if item.type == 'episode' and has_title(item):
         return f"{item.grandparentTitle} season {item.parentIndex} episode {item.index} \"{item.title}\""
+    elif item.type == 'episode':
+        return f"{item.grandparentTitle} season {item.parentIndex} episode {item.index}"
     if item.type == 'movie':
         return f"{item.title} ({item.year})"
 
-def hide_fields(items):
-    """ Hides/removes the selected fields of ALL items in the list. """
+def perform_actions(listener, actions):
+    """ Actually perform the hide/restore actions that were previously calculated """
 
-    for item in items:
-        if args.dry_run:
-            print(f"Would hide selected fields for {item_title_string(item)}")
-            continue
-
-        if config['hide_summaries']:
-            item.editField("summary", config['hidden_summary_string'], locked = config['lock_edited_fields'])
-
-        if config['hide_titles'] and item.type == 'episode':
-            item.editField("title", config['hidden_title_string'], locked = config['lock_edited_fields'])
-
-        if config['hide_thumbnails'] and item.type == 'episode':
-            item.editField("thumb", "", locked = config['lock_edited_fields'])
-
-        if args.verbose: print(f"Hid selected fields for {item_title_string(item)}")
-
-def restore_fields(listener, items, force_restore = False):
-    """ Restore all fields for ALL edited items in the list. """
-
-    to_restore = [item for item in items if (force_restore or has_hidden_field(item))]
-
-    if args.dry_run:
-        for item in to_restore:
-            print(f"Would restore fields for {item_title_string(item)}")
+    if len(actions) == 0:
+        if not args.quiet: print("Nothing to do! Exiting.")
         return
 
-    for item in to_restore:
-        if item.summary == config['hidden_summary_string']:
-            item.editField("summary", config['in_progress_string'], locked = False)
-        if item.type == 'episode' and item.title == config['hidden_title_string']:
-            item.editField("title", config['in_progress_string'], locked = False)
-        if item.type == 'episode' and item.thumb == "":
-            item.editField("thumb", "", locked = False)
+    if not args.quiet:
+        num_actions = len(actions)
+        num_hides = len({action.item for action in actions if action.action == 'hide'})
+        num_restores = len({action.item for action in actions if action.action == 'restore'})
+        print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, restoring fields on {num_restores} items)")
 
+    for action in actions:
+        if args.verbose: print(f"{'Hiding' if action.action == 'hide' else 'Restoring'} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
+
+        if action.action == 'hide':
+            if action.field == 'summary':
+                value = config['hidden_summary_string']
+            elif action.field == 'title':
+                value = config['hidden_title_string']
+            else:
+                value = ""
+
+            action.item.editField(action.field, value, locked = config['lock_edited_fields'])
+        elif action.action == 'restore':
+            # Unlock the field. We also write a temporary message which shows up in Plex almost immediately,
+            # while it is still downloading the correct data.
+            action.item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
+
+    restored_items = {action.item for action in actions if action.action == 'restore'}
+
+    # Tell Plex to re-download data for the restored items, now that every field to restore has been unlocked
+    for item in restored_items:
         item.refresh()
-        if args.verbose: print(f"Restored fields for {item_title_string(item)}")
 
-    # All API requests are now sent to Plex, but it may not have finished downloading summaries yet
+    # All API requests have now been sent to Plex, but it may not have finished downloading summaries yet; wait until it's done
     listener.wait_for_finish()
+
+    if not restored_items:
+        # We only need to verify / possibly retry if one or more items were restored; hides won't fail unless connection
+        # to the server was lost or similar. Plex metadata downloads for restores will fail now and then even with
+        # a stable connection.
+        if not args.quiet: print("All fields were successfully edited")
+        return
 
     if not args.quiet: print("Beginning verification...")
 
-    # Some requests seem to randomly fail (for me usually 1 or 2 out of about 1000); we want to try downloading them again
+    to_retry = restored_items # Filtered in the beginning of the loop, after reloading metadata
+
     for _ in range(3):
         if args.debug: print("Start metadata reload...")
-        for item in to_restore:
+        for item in to_retry:
             item.reload()
         if args.debug: print("Reload finished")
 
-        to_restore = [item for item in to_restore if has_hidden_field(item)]
-        if not to_restore:
-            if not args.quiet: print("All fields were successfully restored")
+        to_retry = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
+        if not to_retry:
+            if not args.quiet: print("All fields were successfully edited")
             return
 
         if not args.quiet:
-            print(f"Retrying {len(to_restore)} items where Plex failed to restore fields...")
+            print(f"Retrying {len(to_retry)} items where Plex failed to restore fields...")
             if args.verbose:
-                for item in to_restore:
+                for item in to_retry:
                     print(f"   Retrying {item_title_string(item)}")
 
-        for item in to_restore:
+        for item in to_retry:
             item.refresh()
 
         listener.wait_for_finish()
 
-    failed = [item for item in to_restore if has_hidden_field(item)]
+    failed = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
 
     if not failed and not args.quiet:
-        print("All fields were successfully restored")
+        print("All fields were successfully edited")
         return
 
     for item in failed:
@@ -319,6 +369,11 @@ def restore_fields(listener, items, force_restore = False):
 
         print(f"Failed to restore fields for {item_title_string(item)}")
 
+    if failed:
+        print("Note: this can mean that Plex simply couldn't find a title/summary/thumbnail for the episode(s)/movie(s) above.")
+
+    sys.exit(0)
+
 def compare_items(i):
     """ Create an ordering between items: first shows (by title, season and episode), then movies (by title and year). """
     return (i.type == 'movie', # False is sorted prior to True, so this makes shows sort higher than movies
@@ -326,72 +381,103 @@ def compare_items(i):
             i.parentIndex if i.type == 'episode' else i.year, # Season for TV shows, year for movies
             i.index if i.type == 'episode' else 0) # Episode number for TV shows
 
+def compare_actions(a):
+    """ Create an ordering between actions: sort by hide/restore, then episode/movie """
+    return (a.action,) + compare_items(a.item)
+
 def should_ignore_item(item):
     """ Returns true for items we should ignore (never hide any fields for) """
     assert item.type in ('episode', 'movie')
     if item.type == 'episode':
-        return item.grandparentTitle in config['ignored_items']
+        return item.grandparentTitle.strip() in config['ignored_items']
     if item.type == 'movie':
-        return item.title in config['ignored_items']
+        return item.title.strip() in config['ignored_items']
 
-def process(listener, items, also_hide=None, also_unhide=None):
-    """ The workhorse method. Hide fields for recently added items, unhide for recently watched items. """
+def prune_unnecessary_actions(action_list):
+    if args.debug: print(f"Before action pruning: {len(action_list)} actions")
+    action_list = [action for action in action_list
+                   if not (action.action == 'hide' and
+                           ((action.field == 'summary' and not has_summary(action.item)) or
+                            (action.field == 'title' and not has_title(action.item)) or
+                            (action.field == 'thumb' and not has_thumbnail(action.item))))]
+    if args.debug: print(f"After action pruning: {len(action_list)} actions")
 
-    need_to_wait = False
+    return action_list
 
-    # Step 1: restore fields of items we've seen (since last run)
+def calculate_actions(listener, items, also_hide=None, also_unhide=None):
+    """ Examine all items and calculate which actions we need to take """
+    
+    # There are four cases to handle: two common, two less common, but they can all be handled by the same logic.
+    # 1) Show all configured fields from recently seen items
+    # 2) Hide all configured fields from unseen items with fields showing (typically recently added items)
+    # 3) Hide *some* fields from unseen items (when the config file was changed to hide more fields than previously)
+    # 4) Show *some* fields from unseen items (when the config file was changed to show more fields than previously)
+    
+    if not args.quiet: print("Calculating action list...")
 
-    unseen_items = [item for item in items if not item.isPlayed]
-    seen_items = [item for item in items if item.isPlayed]
+    action_list = []
 
-    if args.debug: print(f"Done sorting seen vs unseen; seen {len(seen_items)}, unseen {len(unseen_items)}, total {len(items)} items")
+    for item in items:
+        # Case 1: show all fields for recently seen items, plus ignored items that have hidden fields
+        if (item.isPlayed or should_ignore_item(item)):
+            if has_hidden_summary(item):
+                action_list.append(Action(item, 'restore', 'summary'))
+            if has_hidden_title(item):
+                action_list.append(Action(item, 'restore', 'title'))
+            if has_hidden_thumbnail(item):
+                action_list.append(Action(item, 'restore', 'thumb'))
+        elif not item.isPlayed and not should_ignore_item(item):
+            # Cases 2+3+4: check each field in turn, and create up to one action per field and item
+            if has_hidden_summary(item) != config['hide_summaries']:
+                action_list.append(Action(item, 'hide' if config['hide_summaries'] else 'restore', 'summary'))
+            if item.type == 'episode' and has_hidden_title(item) != config['hide_titles']:
+                action_list.append(Action(item, 'hide' if config['hide_titles'] else 'restore', 'title'))
+            if item.type == 'episode' and item.thumb and has_hidden_thumbnail(item) != config['hide_thumbnails']:
+                action_list.append(Action(item, 'hide' if config['hide_thumbnails'] else 'restore', 'thumb'))
 
-    to_unhide = {item for item in seen_items if has_hidden_field(item)}
+    # There are cases where the code above created unnecessary actions; for example,
+    # if has_hidden_summary is false and hide_summaries is true, an action is created to hide the summary.
+    # However, it can be the case that there is no summary *at all*, and in that case, we shouldn't
+    # replace the empty string with "Summary hidden."
+    action_list = prune_unnecessary_actions(action_list)
 
-    if also_unhide:
-        to_unhide.add(also_unhide)
+    # Handle the also_hide and also_unhide arguments.
+    # First remove any Action relating to them to avoid duplicates, then add them in.
+    if also_hide or also_unhide:
+        action_list = [action for action in action_list if action.item not in (also_hide, also_unhide)]
+        if also_unhide:
+            if has_hidden_summary(item):
+                action_list.append(Action(also_unhide, 'restore', 'summary'))
+            if has_hidden_title(item):
+                action_list.append(Action(also_unhide, 'restore', 'title'))
+            if has_hidden_thumbnail(item):
+                action_list.append(Action(also_unhide, 'restore', 'thumb'))
+        if also_hide:
+            if config['hide_summaries']:
+                action_list.append(Action(also_hide, 'hide', 'summary'))
+            if config['hide_titles'] and item.type == 'episode':
+                action_list.append(Action(also_hide, 'hide', 'title'))
+            if config['hide_thumbnails'] and item.type == 'episode':
+                action_list.append(Action(also_hide, 'hide', 'thumb'))
 
-    # Also unhide all currently hidden episodes from ignored shows + ignored movies
-    ignored_to_unhide = [item for item in items if should_ignore_item(item) and has_hidden_field(item)]
+    return sorted(action_list, key=compare_actions)
 
-    to_unhide.update(ignored_to_unhide)
+def calculate_actions_restore_all(listener, items):
+    """ Create an action list that restores everything hidden or locked by this script. """
 
-    if to_unhide:
-        if (args.dry_run or not args.quiet) and not args.verbose:
-            # If verbose, we print each episode restored, so we don't need this too
-            print(("Would restore" if args.dry_run else "Restoring") + \
-                  f" fields for {len(to_unhide)} recently watched (or ignored) items")
-        restore_fields(listener, sorted(to_unhide, key=compare_items))
-        # need_to_wait should still be False here, since restore_fields waits and verifies prior to returning
-    elif not args.quiet:
-        print("No watched items since last run")
+    if not args.quiet: print("Creating action list for full restore...")
 
-    # Step 2: hide fields of recently added, unseen items
-    # This also hides additional fields of items when settings have changed, e.g. hide_thumbnails changed from false to true
+    action_list = []
 
-    to_hide = {item for item in unseen_items
-               if not should_ignore_item(item)
-               and has_field_to_hide(item)}
+    for item in items:
+        if has_hidden_summary(item):
+            action_list.append(Action(item, 'restore', 'summary'))
+        if has_hidden_title(item):
+            action_list.append(Action(item, 'restore', 'title'))
+        if has_hidden_thumbnail(item):
+            action_list.append(Action(item, 'restore', 'thumb'))
 
-    if also_hide:
-        to_hide.add(also_hide)
-
-    # If --also-unhide is used on an item marked as unwatched, we need to handle this manually, or
-    # it will get re-hidden immediately.
-    if also_unhide and also_unhide in to_hide:
-        to_hide.remove(also_unhide)
-
-    if to_hide:
-        if (args.dry_run or not args.quiet) and not args.verbose:
-            # If verbose, we print each episode hidden, so we don't need this too
-            print(("Would hide" if args.dry_run else "Hiding") + f" fields for {len(to_hide)} recently added (or unignored) items")
-        hide_fields(sorted(to_hide, key=compare_items))
-        if not args.dry_run:
-            need_to_wait = True
-    elif not args.quiet:
-        print("No new items to hide fields for")
-
-    return need_to_wait
+    return sorted(action_list, key=compare_actions)
 
 def main():
     """ The main method. To avoid polluting the global namespace with variables. """
@@ -407,31 +493,43 @@ def main():
 
     if args.restore_all:
         if not args.quiet: print("This can take a while.")
-        restore_fields(listener, items_by_guid.values(), force_restore = True)
-    else:
-        also_hide_item = None
-        also_unhide_item = None
+        actions = calculate_actions_restore_all(listener, items_by_guid.values())
+        perform_actions(listener, actions)
+        return
 
-        if args.also_hide:
-            try:
-                also_hide_item = items_by_guid[args.also_hide]
-            except:
-                print(f"Failed to locate item with GUID {args.also_hide} specified with --also-hide, ignoring", file=sys.stderr)
+    also_hide_item = None
+    also_unhide_item = None
 
-        if args.also_unhide:
-            try:
-                also_unhide_item = items_by_guid[args.also_unhide]
-            except:
-                print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
+    if args.also_hide:
+        try:
+            also_hide_item = items_by_guid[args.also_hide]
+        except:
+            print(f"Failed to locate item with GUID {args.also_hide} specified with --also-hide, ignoring", file=sys.stderr)
 
-        need_to_wait = process(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
-        if need_to_wait:
-            listener.wait_for_finish()
+    if args.also_unhide:
+        try:
+            also_unhide_item = items_by_guid[args.also_unhide]
+        except:
+            print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
+
+    actions = calculate_actions(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
+
+    if args.dry_run:
+        for action in action_list:
+            print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
+        if not action_list and not args.quiet:
+            print("No changes would be performed.")
+        return
+    elif not actions and not args.quiet:
+        print("Nothing to do! Exiting.")
+    elif actions:
+        perform_actions(listener, actions)
 
 if __name__=='__main__':
     # Life is so much easier with these in the module/global namespace
     args = parse_args()
     config = read_config(args.config_path)
+    generic_title = re.compile("^Episode #?\d+")
     if args.debug:
         args.verbose = True
         args.quiet = False
