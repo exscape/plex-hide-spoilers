@@ -82,7 +82,7 @@ class Action:
         self.field = field
 
     def __repr__(self):
-        return f"{action} {field} of {item_title_string(item)}"
+        return f"{self.action} {self.field} of {item_title_string(self.item)}"
 
 def parse_args():
     """ Parses command line arguments and returns the "args" object """
@@ -157,9 +157,8 @@ def read_config(config_path = None):
 
     errors = []
     for setting in ('plex_url', 'plex_token', 'hidden_summary_string', 'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'libraries'):
-        if setting not in config or (type(config[setting]) == 'str' and len(config[setting]) == 0):
+        if setting not in config or (isinstance(config[setting], str) and len(config[setting]) == 0):
             errors.append(setting)
-            error_found = True
     if errors:
         print("One or more settings is missing from config.toml -- please see config_sample.toml and update your config file")
         for error in errors:
@@ -404,15 +403,15 @@ def prune_unnecessary_actions(action_list):
 
     return action_list
 
-def calculate_actions(listener, items, also_hide=None, also_unhide=None):
+def calculate_actions(items, also_hide=None, also_unhide=None):
     """ Examine all items and calculate which actions we need to take """
-    
+
     # There are four cases to handle: two common, two less common, but they can all be handled by the same logic.
     # 1) Show all configured fields from recently seen items
     # 2) Hide all configured fields from unseen items with fields showing (typically recently added items)
     # 3) Hide *some* fields from unseen items (when the config file was changed to hide more fields than previously)
     # 4) Show *some* fields from unseen items (when the config file was changed to show more fields than previously)
-    
+
     if not args.quiet: print("Calculating action list...")
 
     action_list = []
@@ -446,23 +445,23 @@ def calculate_actions(listener, items, also_hide=None, also_unhide=None):
     if also_hide or also_unhide:
         action_list = [action for action in action_list if action.item not in (also_hide, also_unhide)]
         if also_unhide:
-            if has_hidden_summary(item):
+            if has_hidden_summary(also_unhide):
                 action_list.append(Action(also_unhide, 'restore', 'summary'))
-            if has_hidden_title(item):
+            if has_hidden_title(also_unhide):
                 action_list.append(Action(also_unhide, 'restore', 'title'))
-            if has_hidden_thumbnail(item):
+            if has_hidden_thumbnail(also_unhide):
                 action_list.append(Action(also_unhide, 'restore', 'thumb'))
         if also_hide:
             if config['hide_summaries']:
                 action_list.append(Action(also_hide, 'hide', 'summary'))
-            if config['hide_titles'] and item.type == 'episode':
+            if config['hide_titles'] and also_hide.type == 'episode':
                 action_list.append(Action(also_hide, 'hide', 'title'))
-            if config['hide_thumbnails'] and item.type == 'episode':
+            if config['hide_thumbnails'] and also_hide.type == 'episode':
                 action_list.append(Action(also_hide, 'hide', 'thumb'))
 
     return sorted(action_list, key=compare_actions)
 
-def calculate_actions_restore_all(listener, items):
+def calculate_actions_restore_all(items):
     """ Create an action list that restores everything hidden or locked by this script. """
 
     if not args.quiet: print("Creating action list for full restore...")
@@ -493,7 +492,7 @@ def main():
 
     if args.restore_all:
         if not args.quiet: print("This can take a while.")
-        actions = calculate_actions_restore_all(listener, items_by_guid.values())
+        actions = calculate_actions_restore_all(items_by_guid.values())
         perform_actions(listener, actions)
         return
 
@@ -512,12 +511,12 @@ def main():
         except:
             print(f"Failed to locate item with GUID {args.also_unhide} specified with --also-unhide, ignoring", file=sys.stderr)
 
-    actions = calculate_actions(listener, items_by_guid.values(), also_hide_item, also_unhide_item)
+    actions = calculate_actions(items_by_guid.values(), also_hide_item, also_unhide_item)
 
     if args.dry_run:
-        for action in action_list:
+        for action in actions:
             print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
-        if not action_list and not args.quiet:
+        if not actions and not args.quiet:
             print("No changes would be performed.")
         return
     elif not actions and not args.quiet:
@@ -529,7 +528,7 @@ if __name__=='__main__':
     # Life is so much easier with these in the module/global namespace
     args = parse_args()
     config = read_config(args.config_path)
-    generic_title = re.compile("^Episode #?\d+")
+    generic_title = re.compile(r"^Episode #?\d+")
     if args.debug:
         args.verbose = True
         args.quiet = False
