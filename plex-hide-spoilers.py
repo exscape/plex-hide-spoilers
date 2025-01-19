@@ -12,6 +12,9 @@ import sys
 import time
 import argparse
 
+from plexapi.server import PlexServer
+from plexapi.alert import AlertListener
+
 try:
     # tomllib ships with Python 3.11+
     import tomllib # novermin -- excludes from vermin version check
@@ -19,9 +22,6 @@ except ModuleNotFoundError:
     # tomli (the base for tomllib) is compatible and makes this program
     # compatible with Python 3.8-3.10 as well as 3.11+
     import tomli as tomllib
-
-from plexapi.server import PlexServer
-from plexapi.alert import AlertListener
 
 config = {}
 
@@ -186,54 +186,6 @@ def read_config(config_path = None):
 
     return config
 
-def has_summary(item):
-    return len(item.summary) > 0 and not has_hidden_summary(item)
-
-def has_title(item):
-    return len(item.title) > 0 and not has_hidden_title(item) and not generic_title.match(item.title)
-
-def has_thumbnail(item):
-    return item.thumb and len(item.thumb) > 0 and not has_hidden_thumbnail(item)
-
-def has_hidden_summary(item):
-    return item.summary.startswith(config['hidden_summary_string']) or item.summary.startswith(config['in_progress_string'])
-
-def has_hidden_title(item):
-    return item.title.startswith(config['hidden_title_string']) or item.title.startswith(config['in_progress_string'])
-
-def has_hidden_thumbnail(item):
-    # TODO: I'm not sure if this is always a valid or not; I can only say that it works for me(tm).
-    # Worst-case, it could cause the script to process an item every time it's run.
-    return item.type == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb)
-
-def has_any_hidden_field(item):
-    """ True if the item has had its summary or title hidden by this script """
-    return has_hidden_summary(item) or has_hidden_title(item) or has_hidden_thumbnail(item)
-
-#def has_field_to_hide(item):
-#    """ True if an item has at least one field visible that should be hidden. """
-#    summary = item.summary
-#    title = item.title
-#    t = item.type
-#
-#    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
-#    return (not item.isPlayed) and \
-#           (config['hide_summaries'] and len(summary) > 0 and not summary.startswith(config['hidden_summary_string'])) or \
-#           (config['hide_titles'] and t == 'episode' and len(title) > 0 and not title.startswith(config['hidden_title_string'])) or \
-#           (config['hide_thumbnails'] and t == 'episode' and item.thumb and item.thumb not in (item.parentThumb, item.grandparentThumb))
-#
-#def has_field_to_show(item):
-#    """ True if an item has at least one field hidden that should be visible. """
-#    summary = item.summary
-#    title = item.title
-#    t = item.type
-#
-#    # TODO: does the thumbnail part always work? It works for me(tm) as Plex seems to use the season thumbnail when we clear and lock an episode thumbnail.
-#    return (item.isPlayed and has_any_hidden_field(item)) or \
-#           (not config['hide_summaries'] and len(summary) > 0 and summary.startswith(config['hidden_summary_string'])) or \
-#           (not config['hide_titles'] and t == 'episode' and len(title) > 0 and title.startswith(config['hidden_title_string'])) or \
-#           (not config['hide_thumbnails'] and t == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb))
-
 def get_plex_sections(plex):
     """ Fetch a list of Plex LibrarySection objects from our config file list of libraries """
     plex_sections = []
@@ -270,6 +222,30 @@ def fetch_items(plex):
 
     return items_by_guid
 
+def has_summary(item):
+    return len(item.summary) > 0 and not has_hidden_summary(item)
+
+def has_title(item):
+    return len(item.title) > 0 and not has_hidden_title(item) and not generic_title.match(item.title)
+
+def has_thumbnail(item):
+    return item.thumb and len(item.thumb) > 0 and not has_hidden_thumbnail(item)
+
+def has_hidden_summary(item):
+    return item.summary.startswith(config['hidden_summary_string']) or item.summary.startswith(config['in_progress_string'])
+
+def has_hidden_title(item):
+    return item.title.startswith(config['hidden_title_string']) or item.title.startswith(config['in_progress_string'])
+
+def has_hidden_thumbnail(item):
+    # TODO: I'm not sure if this is always a valid or not; I can only say that it works for me(tm).
+    # Worst-case, it could cause the script to process an item every time it's run.
+    return item.type == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb)
+
+def has_any_hidden_field(item):
+    """ True if the item has had its summary or title hidden by this script """
+    return has_hidden_summary(item) or has_hidden_title(item) or has_hidden_thumbnail(item)
+
 def item_title_string(item):
     """ Create a string to describe an item. """
     if item.type == 'episode' and has_title(item):
@@ -278,100 +254,6 @@ def item_title_string(item):
         return f"{item.grandparentTitle} season {item.parentIndex} episode {item.index}"
     if item.type == 'movie':
         return f"{item.title} ({item.year})"
-
-def perform_actions(listener, actions):
-    """ Actually perform the hide/restore actions that were previously calculated """
-
-    if len(actions) == 0:
-        if not args.quiet: print("Nothing to do! Exiting.")
-        return
-
-    if not args.quiet:
-        num_actions = len(actions)
-        num_hides = len({action.item for action in actions if action.action == 'hide'})
-        num_restores = len({action.item for action in actions if action.action == 'restore'})
-        print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, restoring fields on {num_restores} items)")
-
-    for action in actions:
-        if args.verbose: print(f"{'Hiding' if action.action == 'hide' else 'Restoring'} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
-
-        if action.action == 'hide':
-            if action.field == 'summary':
-                value = config['hidden_summary_string']
-            elif action.field == 'title':
-                value = config['hidden_title_string']
-            else:
-                value = ""
-
-            action.item.editField(action.field, value, locked = config['lock_edited_fields'])
-        elif action.action == 'restore':
-            # Unlock the field. We also write a temporary message which shows up in Plex almost immediately,
-            # while it is still downloading the correct data.
-            action.item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
-
-    restored_items = {action.item for action in actions if action.action == 'restore'}
-
-    # Tell Plex to re-download data for the restored items, now that every field to restore has been unlocked
-    for item in restored_items:
-        item.refresh()
-
-    # All API requests have now been sent to Plex, but it may not have finished downloading summaries yet; wait until it's done
-    listener.wait_for_finish()
-
-    if not restored_items:
-        # We only need to verify / possibly retry if one or more items were restored; hides won't fail unless connection
-        # to the server was lost or similar. Plex metadata downloads for restores will fail now and then even with
-        # a stable connection.
-        if not args.quiet: print("All fields were successfully edited")
-        return
-
-    if not args.quiet: print("Beginning verification...")
-
-    to_retry = restored_items # Filtered in the beginning of the loop, after reloading metadata
-
-    for _ in range(3):
-        if args.debug: print("Start metadata reload...")
-        for item in to_retry:
-            item.reload()
-        if args.debug: print("Reload finished")
-
-        to_retry = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
-        if not to_retry:
-            if not args.quiet: print("All fields were successfully edited")
-            return
-
-        if not args.quiet:
-            print(f"Retrying {len(to_retry)} items where Plex failed to restore fields...")
-            if args.verbose:
-                for item in to_retry:
-                    print(f"   Retrying {item_title_string(item)}")
-
-        for item in to_retry:
-            item.refresh()
-
-        listener.wait_for_finish()
-
-    failed = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
-
-    if not failed and not args.quiet:
-        print("All fields were successfully edited")
-        return
-
-    for item in failed:
-        # Clear any "in progress" fields for the failed items, and make sure the fields are not locked
-        if len(item.summary) == 0 or item.summary == config['in_progress_string']:
-            item.editField("summary", "", locked = False)
-        if len(item.title) == 0 or item.title == config['in_progress_string']:
-            item.editField("title", "", locked = False)
-        if item.thumb == "":
-            item.editField("thumb", "", locked = False)
-
-        print(f"Failed to restore fields for {item_title_string(item)}")
-
-    if failed:
-        print("Note: this can mean that Plex simply couldn't find a title/summary/thumbnail for the episode(s)/movie(s) above.")
-
-    sys.exit(0)
 
 def compare_items(i):
     """ Create an ordering between items: first shows (by title, season and episode), then movies (by title and year). """
@@ -477,6 +359,100 @@ def calculate_actions_restore_all(items):
             action_list.append(Action(item, 'restore', 'thumb'))
 
     return sorted(action_list, key=compare_actions)
+
+def perform_actions(listener, actions):
+    """ Actually perform the hide/restore actions that were previously calculated """
+
+    if len(actions) == 0:
+        if not args.quiet: print("Nothing to do! Exiting.")
+        return
+
+    if not args.quiet:
+        num_actions = len(actions)
+        num_hides = len({action.item for action in actions if action.action == 'hide'})
+        num_restores = len({action.item for action in actions if action.action == 'restore'})
+        print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, restoring fields on {num_restores} items)")
+
+    for action in actions:
+        if args.verbose: print(f"{'Hiding' if action.action == 'hide' else 'Restoring'} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
+
+        if action.action == 'hide':
+            if action.field == 'summary':
+                value = config['hidden_summary_string']
+            elif action.field == 'title':
+                value = config['hidden_title_string']
+            else:
+                value = ""
+
+            action.item.editField(action.field, value, locked = config['lock_edited_fields'])
+        elif action.action == 'restore':
+            # Unlock the field. We also write a temporary message which shows up in Plex almost immediately,
+            # while it is still downloading the correct data.
+            action.item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
+
+    restored_items = {action.item for action in actions if action.action == 'restore'}
+
+    # Tell Plex to re-download data for the restored items, now that every field to restore has been unlocked
+    for item in restored_items:
+        item.refresh()
+
+    # All API requests have now been sent to Plex, but it may not have finished downloading summaries yet; wait until it's done
+    listener.wait_for_finish()
+
+    if not restored_items:
+        # We only need to verify / possibly retry if one or more items were restored; hides won't fail unless connection
+        # to the server was lost or similar. Plex metadata downloads for restores will fail now and then even with
+        # a stable connection.
+        if not args.quiet: print("All fields were successfully edited")
+        return
+
+    if not args.quiet: print("Beginning verification...")
+
+    to_retry = restored_items # Filtered in the beginning of the loop, after reloading metadata
+
+    for _ in range(3):
+        if args.debug: print("Start metadata reload...")
+        for item in to_retry:
+            item.reload()
+        if args.debug: print("Reload finished")
+
+        to_retry = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
+        if not to_retry:
+            if not args.quiet: print("All fields were successfully edited")
+            return
+
+        if not args.quiet:
+            print(f"Retrying {len(to_retry)} items where Plex failed to restore fields...")
+            if args.verbose:
+                for item in to_retry:
+                    print(f"   Retrying {item_title_string(item)}")
+
+        for item in to_retry:
+            item.refresh()
+
+        listener.wait_for_finish()
+
+    failed = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
+
+    if not failed and not args.quiet:
+        print("All fields were successfully edited")
+        return
+
+    for item in failed:
+        # Clear any "in progress" fields for the failed items, and make sure the fields are not locked
+        if len(item.summary) == 0 or item.summary == config['in_progress_string']:
+            item.editField("summary", "", locked = False)
+        if len(item.title) == 0 or item.title == config['in_progress_string']:
+            item.editField("title", "", locked = False)
+        if item.thumb == "":
+            item.editField("thumb", "", locked = False)
+
+        print(f"Failed to restore fields for {item_title_string(item)}")
+
+    if failed:
+        print("Note: this can mean that Plex simply couldn't find a title/summary/thumbnail for the episode(s)/movie(s) above.")
+
+    sys.exit(0)
 
 def main():
     """ The main method. To avoid polluting the global namespace with variables. """
