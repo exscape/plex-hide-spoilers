@@ -73,6 +73,7 @@ class PlexListener:
             print(" done", flush=True)
 
 class Action:
+    """ Represents a single action to hide or restore a single field (summary/title/thumbnail). """
     def __init__(self, item, action, field):
         # Lazy man's enums
         assert action in ('hide', 'restore')
@@ -275,6 +276,7 @@ def should_ignore_item(item):
         return item.title.strip() in config['ignored_items']
 
 def prune_unnecessary_actions(action_list):
+    """ Removes actions that would try to hide an empty field. """
     if args.debug: print(f"Before action pruning: {len(action_list)} actions")
     action_list = [action for action in action_list
                    if not (action.action == 'hide' and
@@ -448,9 +450,6 @@ def perform_actions(listener, actions):
             item.editField("thumb", "", locked = False)
 
         print(f"Failed to restore fields for {item_title_string(item)}")
-
-    if failed:
-        print("Note: this can mean that Plex simply couldn't find a title/summary/thumbnail for the episode(s)/movie(s) above.")
 
     sys.exit(0)
 
