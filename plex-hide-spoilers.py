@@ -58,7 +58,7 @@ class PlexListener:
         return time.time() - self.last_update
 
     def wait_for_finish(self, timeout = 2):
-        """ Waits for Plex to finish async processing (until timeout seconds have passed since the last message) """
+        """ Waits for Plex to finish processing (until timeout seconds have passed since the last message) """
         if not args.quiet:
             print("Waiting for Plex to finish processing...", end="", flush=True)
 
@@ -87,9 +87,11 @@ class Action:
 
 def parse_args():
     """ Parses command line arguments and returns the "args" object """
-    parser = argparse.ArgumentParser(description='Hide Plex summaries (and more) from unseen TV episodes and movies.\n\n' +
-        'When run without options, this script will hide the fields selected in the config file for all unwatched items (episodes + movies) -- ' +
-        'except for shows ignored in the configuration file -- in the chosen libraries, and restore the hidden fields for all items ' +
+    parser = argparse.ArgumentParser(
+        description='Hide Plex summaries (and more) from unseen TV episodes and movies.\n\n' +
+        'When run without options, this script will hide the fields selected in the config file for all ' +
+        'unwatched items (episodes + movies) -- except for shows ignored in the configuration file -- ' +
+        'in the chosen libraries, and restore the hidden fields for all items ' +
         'watched since the last run.\n' +
         "It will look for config.toml in the same directory as the .py file, and in its parent directory.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -138,7 +140,8 @@ def read_config(config_path = None):
         with open(config_path, "rb") as conf_file:
             config = tomllib.load(conf_file)
     except FileNotFoundError:
-        print(f"Configuration file ({config_path}) not found!\nDo you need to copy config_sample.toml to config.toml and edit it?")
+        print(f"Configuration file ({config_path}) not found!\n" +
+              "Do you need to copy config_sample.toml to config.toml and edit it?")
         sys.exit(1)
     except tomllib.TOMLDecodeError as e:
         print(f"Configuration file ({config_path}) invalid: {e}")
@@ -157,7 +160,8 @@ def read_config(config_path = None):
         config['ignored_items'] = []
 
     errors = []
-    for setting in ('plex_url', 'plex_token', 'hidden_summary_string', 'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'libraries'):
+    for setting in ('plex_url', 'plex_token', 'hidden_summary_string', 'hidden_title_string',
+                    'hide_summaries', 'hide_thumbnails', 'hide_titles', 'libraries'):
         if setting not in config or (isinstance(config[setting], str) and len(config[setting]) == 0):
             errors.append(setting)
     if errors:
@@ -167,15 +171,16 @@ def read_config(config_path = None):
         sys.exit(8)
 
     if config['hide_thumbnails'] and not (config['hide_summaries'] or config['hide_titles']):
-        print("Your config is set to hide thumbnails only, and not summaries or titles. This configuration is unfortunately not supported, "
-              "as the edited title or summary is needed to identify which items are edited by the script, and which are unmodified.")
+        print("Your config is set to hide thumbnails only, and not summaries or titles.\n" +
+              "This configuration is unfortunately not supported, as the edited title or summary " +
+              "is needed to identify which items are edited by the script, and which are unmodified.")
         print("If you want to hide thumbnails, enable hide_summaries or hide_titles as well.")
         sys.exit(2)
 
     for setting in config:
-        if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries',
-                           'ignored_items', 'lock_hidden_summaries', 'hidden_summary_string', 'hidden_title_string', 'lock_edited_fields',
-                           'hide_summaries', 'hide_thumbnails', 'hide_titles'):
+        if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries', 'ignored_items',
+                           'lock_hidden_summaries', 'hidden_summary_string', 'hidden_title_string',
+                           'lock_edited_fields', 'hide_summaries', 'hide_thumbnails', 'hide_titles'):
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
@@ -373,10 +378,14 @@ def perform_actions(listener, actions):
         num_actions = len(actions)
         num_hides = len({action.item for action in actions if action.action == 'hide'})
         num_restores = len({action.item for action in actions if action.action == 'restore'})
-        print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, restoring fields on {num_restores} items)")
+        print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, " +
+              f"restoring fields on {num_restores} items)")
 
     for action in actions:
-        if args.verbose: print(f"{'Hiding' if action.action == 'hide' else 'Restoring'} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
+        if args.verbose:
+            print(f"{'Hiding' if action.action == 'hide' else 'Restoring'} " +
+                  f"{'thumbnail' if action.field == 'thumb' else action.field} " +
+                  f"for {item_title_string(action.item)}")
 
         if action.action == 'hide':
             if action.field == 'summary':
@@ -388,8 +397,8 @@ def perform_actions(listener, actions):
 
             action.item.editField(action.field, value, locked = config['lock_edited_fields'])
         elif action.action == 'restore':
-            # Unlock the field. We also write a temporary message which shows up in Plex almost immediately,
-            # while it is still downloading the correct data.
+            # Unlock the field. We also write a temporary message which shows up in Plex
+            # almost immediately, while it is still downloading the correct data.
             action.item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
 
     restored_items = {action.item for action in actions if action.action == 'restore'}
@@ -490,7 +499,8 @@ def main():
 
     if args.dry_run:
         for action in actions:
-            print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field} for {item_title_string(action.item)}")
+            print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field}" +
+                  f"for {item_title_string(action.item)}")
         if not actions and not args.quiet:
             print("No changes would be performed.")
         return
