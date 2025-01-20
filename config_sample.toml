@@ -19,10 +19,6 @@ libraries = ['TV Shows', 'TV Series']
 #
 # For movies (if you add your movie library/libraries above), only summaries are hidden, since
 # hiding the movie name or poster/cover makes little sense.
-#
-# NOTE: If you change any of these from true to false, you should run the script with --restore-all, then re-run it without options,
-# to ensure the changes apply to every episode/movie.
-# When changing to hide *more* fields, the changes should apply when the script is run normally.
 hide_summaries = true
 hide_titles = false
 hide_thumbnails = false
