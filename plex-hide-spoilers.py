@@ -232,10 +232,14 @@ def has_summary(item):
     return len(item.summary) > 0 and not has_hidden_summary(item)
 
 def has_title(item):
-    return len(item.title) > 0 and not has_hidden_title(item) and not generic_title.match(item.title)
+    return has_non_generic_title(item) and not has_hidden_title(item)
 
 def has_thumbnail(item):
     return item.thumb and len(item.thumb) > 0 and not has_hidden_thumbnail(item)
+
+def has_non_generic_title(item):
+    """ True if an item has a non-generic (not e.g. "Episode 5") title -- also True(!) for hidden titles. """
+    return len(item.title) > 0 and not generic_title.match(item.title)
 
 def has_hidden_summary(item):
     return item.summary.startswith(config['hidden_summary_string']) or item.summary.startswith(config['in_progress_string'])
@@ -280,18 +284,6 @@ def should_ignore_item(item):
     if item.type == 'movie':
         return item.title.strip() in config['ignored_items']
 
-def prune_unnecessary_actions(action_list):
-    """ Removes actions that would try to hide an empty field. """
-    if args.debug: print(f"Before action pruning: {len(action_list)} actions")
-    action_list = [action for action in action_list
-                   if not (action.action == 'hide' and
-                           ((action.field == 'summary' and not has_summary(action.item)) or
-                            (action.field == 'title' and not has_title(action.item)) or
-                            (action.field == 'thumb' and not has_thumbnail(action.item))))]
-    if args.debug: print(f"After action pruning: {len(action_list)} actions")
-
-    return action_list
-
 def calculate_actions(items, also_hide=None, also_unhide=None):
     """ Examine all items and calculate which actions we need to take """
 
@@ -317,17 +309,21 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
         elif not item.isPlayed and not should_ignore_item(item):
             # Cases 2+3+4: check each field in turn, and create up to one action per field and item
             if has_hidden_summary(item) != config['hide_summaries']:
+                if len(item.summary) == 0:
+                    # This logic applies for all summaries/titles/thumbnails: we get here if there is a non-hidden summary
+                    # that should be hidden, a hidden summary that should not be hidden, AND if there is no summary at all.
+                    # The append line takes care of 2/3, so we just need to handle the case of no summary at all.
+                    continue
                 action_list.append(Action(item, 'hide' if config['hide_summaries'] else 'restore', 'summary'))
             if item.type == 'episode' and has_hidden_title(item) != config['hide_titles']:
+                if not has_non_generic_title(item):
+                    # Generic titles like "Episode 3" should not be hidden or restored, nor should entirely missing titles
+                    continue
                 action_list.append(Action(item, 'hide' if config['hide_titles'] else 'restore', 'title'))
             if item.type == 'episode' and item.thumb and has_hidden_thumbnail(item) != config['hide_thumbnails']:
+                if not item.thumb or len(item.thumb) == 0:
+                    continue
                 action_list.append(Action(item, 'hide' if config['hide_thumbnails'] else 'restore', 'thumb'))
-
-    # There are cases where the code above created unnecessary actions; for example,
-    # if has_hidden_summary is false and hide_summaries is true, an action is created to hide the summary.
-    # However, it can be the case that there is no summary *at all*, and in that case, we shouldn't
-    # replace the empty string with "Summary hidden."
-    action_list = prune_unnecessary_actions(action_list)
 
     # Handle the also_hide and also_unhide arguments.
     # First remove any Action relating to them to avoid duplicates, then add them in.
