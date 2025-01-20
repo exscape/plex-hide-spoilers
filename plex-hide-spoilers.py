@@ -495,7 +495,7 @@ def main():
 
     if args.dry_run:
         for action in actions:
-            print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field}" +
+            print(f"Would {action.action} {'thumbnail' if action.field == 'thumb' else action.field} " +
                   f"for {item_title_string(action.item)}")
         if not actions and not args.quiet:
             print("No changes would be performed.")

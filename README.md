@@ -5,15 +5,20 @@ Please open a Github issue if things aren't working properly, or even if you jus
 
 # Features
 
+* Choose what to hide: summaries (TV and/or movies), episode titles, episode thumbnails.
+* Choose exactly which libraries to include (can be TV libraries, movie libraries, or both)
+* Ignore list for shows and individual movies (leaves all fields showing, even when unwatched)
 * Doesn't need to run on the Plex server -- can run on e.g. a Windows desktop with the Plex server on a NAS
 * Fairly performant: runs in a few seconds with a fairly large library
-* Choose exactly which libraries to include (can be TV libraries, movie libraries or both)
-* Ignore list for shows and individual movies you want to leave untouched (all summaries showing, even when unwatched)
 * Tested on Windows and Linux, but should run on just about anything that runs Python
 
 # Stuff left to do
 
 * Improve Plex login. The script currently requires a Plex token, fetched from a logged-in browser.
+
+# Shortcomings
+
+* Really only usable on a server with a single user, since fields are hidden for everyone on the server.
 
 # Installation
 
@@ -91,7 +96,7 @@ If you have any issues with this, open an issue and I'll look at adding proper P
 
 # Usage
 
-With no arguments, the script will hide the summaries from all unseen episodes/movies (except those from ignored shows, see the configuration file), and *unhide* the summaries from all episodes/movies you've seen since the last run.  
+When run with no arguments, the script will hide the configured fields from all unseen episodes/movies (except those from ignored shows, see the configuration file), and *unhide* the fields from all episodes/movies you've seen since the last run.  
 While the recommended usage is with Tautulli or using a task scheduler, make sure to run the script manually first, to ensure everything is correctly configured.
 
 ## With Tautulli
