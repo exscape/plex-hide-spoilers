@@ -252,9 +252,11 @@ def has_hidden_thumbnail(item):
     # Worst-case, it could cause the script to process an item every time it's run.
     return item.type == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb)
 
-def has_any_hidden_field(item):
-    """ True if the item has had its summary or title hidden by this script """
-    return has_hidden_summary(item) or has_hidden_title(item) or has_hidden_thumbnail(item)
+def has_field_to_hide(item):
+    """ True if the item has a field visible that should be hidden """
+    return (config['hide_summaries'] and not has_hidden_summary(item) and len(item.summary) > 0) or \
+           (config['hide_titles'] and not has_hidden_title(item) and has_non_generic_title(item)) or \
+           (config['hide_thumbnails'] and not has_hidden_thumbnail(item) and item.thumb and len(item.thumb) > 0)
 
 def item_title_string(item):
     """ Create a string to describe an item. """
@@ -423,7 +425,7 @@ def perform_actions(listener, actions):
             item.reload()
         if args.debug: print("Reload finished")
 
-        to_retry = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
+        to_retry = sorted([item for item in to_retry if has_field_to_hide(item)], key=compare_items)
         if not to_retry:
             if not args.quiet: print("All fields were successfully edited")
             return
@@ -439,7 +441,7 @@ def perform_actions(listener, actions):
 
         listener.wait_for_finish()
 
-    failed = sorted([item for item in to_retry if has_any_hidden_field(item)], key=compare_items)
+    failed = sorted([item for item in to_retry if has_field_to_hide(item)], key=compare_items)
 
     if not failed and not args.quiet:
         print("All fields were successfully edited")
