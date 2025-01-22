@@ -235,7 +235,7 @@ def has_title(item):
     return has_non_generic_title(item) and not has_hidden_title(item)
 
 def has_thumbnail(item):
-    return item.thumb and len(item.thumb) > 0 and not has_hidden_thumbnail(item)
+    return item.thumb and len(item.thumb) > 0 and not item.thumb in (item.parentThumb, item.grandparentThumb) and not has_hidden_thumbnail(item)
 
 def has_non_generic_title(item):
     """ True if an item has a non-generic (not e.g. "Episode 5") title -- also True(!) for hidden titles. """
@@ -248,12 +248,17 @@ def has_hidden_title(item):
     return item.title.startswith(config['hidden_title_string']) or item.title.startswith(config['in_progress_string'])
 
 def has_hidden_thumbnail(item):
-    # TODO: I'm not sure if this is always a valid or not; I can only say that it works for me(tm).
-    # Worst-case, it could cause the script to process an item every time it's run.
-    return item.type == 'episode' and item.thumb and item.thumb in (item.parentThumb, item.grandparentThumb)
+    # I can't find a better solution than this. Setting thumb = "" will cause Plex to re-download the thumbnail
+    # on the next refresh, even when locked, so we need to upload a poster or store it next to the episode.
+    # If we upload, the only way I know of finding out which are from the script is to use e.g. EXIF, but then
+    # we need to download every thumbnail every time the script runs, to check which are hidden.
+    return any(label.tag == "ThumbnailHidden" for label in item.labels)
 
 def has_field_to_hide(item):
     """ True if the item has a field visible that should be hidden """
+    if item.isPlayed or should_ignore_item(item):
+        return False
+
     return (config['hide_summaries'] and not has_hidden_summary(item) and len(item.summary) > 0) or \
            (config['hide_titles'] and not has_hidden_title(item) and has_non_generic_title(item)) or \
            (config['hide_thumbnails'] and not has_hidden_thumbnail(item) and item.thumb and len(item.thumb) > 0)
@@ -312,8 +317,8 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
             # Cases 2+3+4: check each field in turn, and create up to one action per field and item
             if has_hidden_summary(item) != config['hide_summaries']:
                 if len(item.summary) == 0:
-                    # This logic applies for all summaries/titles/thumbnails: we get here if there is a non-hidden summary
-                    # that should be hidden, a hidden summary that should not be hidden, AND if there is no summary at all.
+                    # We get here if there is a non-hidden summary that should be hidden,
+                    # a hidden summary that should not be hidden, AND if there is no summary at all.
                     # The append line takes care of 2/3, so we just need to handle the case of no summary at all.
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_summaries'] else 'restore', 'summary'))
@@ -322,8 +327,8 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
                     # Generic titles like "Episode 3" should not be hidden or restored, nor should entirely missing titles
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_titles'] else 'restore', 'title'))
-            if item.type == 'episode' and item.thumb and has_hidden_thumbnail(item) != config['hide_thumbnails']:
-                if not item.thumb or len(item.thumb) == 0:
+            if item.type == 'episode' and has_hidden_thumbnail(item) != config['hide_thumbnails']:
+                if config['hide_thumbnails'] and not has_thumbnail(item):
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_thumbnails'] else 'restore', 'thumb'))
 
@@ -365,7 +370,7 @@ def calculate_actions_restore_all(items):
 
     return sorted(action_list, key=compare_actions)
 
-def perform_actions(listener, actions):
+def perform_actions(plex, listener, actions):
     """ Actually perform the hide/restore actions that were previously calculated """
 
     if len(actions) == 0:
@@ -385,19 +390,50 @@ def perform_actions(listener, actions):
                   f"{'thumbnail' if action.field == 'thumb' else action.field} " +
                   f"for {item_title_string(action.item)}")
 
+        item = action.item
+        if action.field == 'thumb':
+            # Using editField on "thumb" doesn't work; even when locked, Plex redownloads the thumbnail
+            # on the next refresh. I assume that's a bug, but even so, we need a solution that works now.
+
+            if action.action == 'hide':
+                generic_thumb = item.parentThumb or item.grandparentThumb
+                if not generic_thumb or not generic_thumb.startswith('/'):
+                    # TODO: does this ever happen? If so, we should add a fallback thumbnail to use
+                    print(f"Warning: couldn't hide thumbnail for {item_title_string(item)}")
+                    continue
+
+                # Add the label first, to ensure we can't get a hidden thumbnail without the label
+                item.addLabel("ThumbnailHidden")
+                item.uploadPoster(url=plex.url(generic_thumb, includeToken=True))
+            else:
+                new_poster = 0
+                posters = item.posters()
+                if posters[0].selected:
+                    # I'm not sure if this happens or not -- typically not, but I can't be sure out poster is NEVER #0
+                    if len(posters) >= 2:
+                        new_poster = 1
+                    else:
+                        print(f"Warning: unable to restore thumbnail for {item_title_string(item)}")
+                        continue
+
+                item.unlockPoster()
+                posters[new_poster].select()
+                item.removeLabel("ThumbnailHidden")
+
+            continue
+
+        # Note the continue above -- code below is for summaries and titles only
         if action.action == 'hide':
             if action.field == 'summary':
                 value = config['hidden_summary_string']
-            elif action.field == 'title':
-                value = config['hidden_title_string']
             else:
-                value = ""
+                value = config['hidden_title_string']
 
-            action.item.editField(action.field, value, locked = config['lock_edited_fields'])
+            item.editField(action.field, value, locked = config['lock_edited_fields'])
         elif action.action == 'restore':
             # Unlock the field. We also write a temporary message which shows up in Plex
             # almost immediately, while it is still downloading the correct data.
-            action.item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
+            item.editField(action.field, config['in_progress_string'] if action.field != "thumb" else "", locked = False)
 
     restored_items = {action.item for action in actions if action.action == 'restore'}
 
@@ -475,7 +511,7 @@ def main():
     if args.restore_all:
         if not args.quiet: print("This can take a while.")
         actions = calculate_actions_restore_all(items_by_guid.values())
-        perform_actions(listener, actions)
+        perform_actions(plex, listener, actions)
         return
 
     also_hide_item = None
@@ -505,7 +541,7 @@ def main():
     elif not actions and not args.quiet:
         print("Nothing to do! Exiting.")
     elif actions:
-        perform_actions(listener, actions)
+        perform_actions(plex, listener, actions)
 
 if __name__=='__main__':
     # Life is so much easier with these in the module/global namespace
