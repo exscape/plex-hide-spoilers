@@ -171,13 +171,6 @@ def read_config(config_path = None):
             print(f"* {error}")
         sys.exit(8)
 
-    if config['hide_thumbnails'] and not (config['hide_summaries'] or config['hide_titles']):
-        print("Your config is set to hide thumbnails only, and not summaries or titles.\n" +
-              "This configuration is unfortunately not supported, as the edited title or summary " +
-              "is needed to identify which items are edited by the script, and which are unmodified.")
-        print("If you want to hide thumbnails, enable hide_summaries or hide_titles as well.")
-        sys.exit(2)
-
     for setting in config:
         if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries', 'ignored_items',
                            'lock_hidden_summaries', 'hidden_summary_string', 'hidden_title_string',
@@ -262,7 +255,8 @@ def has_field_to_hide(item):
 
     return (config['hide_summaries'] and not has_hidden_summary(item) and len(item.summary) > 0) or \
            (config['hide_titles'] and not has_hidden_title(item) and has_non_generic_title(item)) or \
-           (config['hide_thumbnails'] and not has_hidden_thumbnail(item) and item.thumb and len(item.thumb) > 0)
+           (config['hide_thumbnails'] and not has_hidden_thumbnail(item) and item.thumb and len(item.thumb) > 0 and \
+                item.thumb not in (item.parentThumb, item.grandparentThumb))
 
 def item_title_string(item):
     """ Create a string to describe an item. """
