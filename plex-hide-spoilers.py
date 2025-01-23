@@ -429,7 +429,7 @@ def perform_single_action(plex, action):
     return True
 
 def perform_actions(plex, listener, actions):
-    """ Actually perform the hide/restore actions that were previously calculated """
+    """ Perform the hide/restore actions that were previously calculated. """
 
     if len(actions) == 0:
         if not args.quiet: print("Nothing to do! Exiting.")
