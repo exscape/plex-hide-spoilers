@@ -74,13 +74,14 @@ class PlexListener:
 
 class Action:
     """ Represents a single action to hide or restore a single field (summary/title/thumbnail). """
-    def __init__(self, item, action, field):
+    def __init__(self, item, action, field, force = False):
         # Lazy man's enums
         assert action in ('hide', 'restore')
         assert field in ('summary', 'title', 'thumb')
         self.item = item
         self.action = action
         self.field = field
+        self.force = force
 
     def __repr__(self):
         return f"{self.action} {self.field} of {item_title_string(self.item)}"
@@ -338,18 +339,18 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
         action_list = [action for action in action_list if action.item not in (also_hide, also_unhide)]
         if also_unhide:
             if has_hidden_summary(also_unhide):
-                action_list.append(Action(also_unhide, 'restore', 'summary'))
+                action_list.append(Action(also_unhide, 'restore', 'summary', force=True))
             if has_hidden_title(also_unhide):
-                action_list.append(Action(also_unhide, 'restore', 'title'))
+                action_list.append(Action(also_unhide, 'restore', 'title', force=True))
             if has_hidden_thumbnail(also_unhide):
-                action_list.append(Action(also_unhide, 'restore', 'thumb'))
+                action_list.append(Action(also_unhide, 'restore', 'thumb', force=True))
         if also_hide:
             if config['hide_summaries']:
-                action_list.append(Action(also_hide, 'hide', 'summary'))
+                action_list.append(Action(also_hide, 'hide', 'summary', force=True))
             if config['hide_titles'] and also_hide.type == 'episode':
-                action_list.append(Action(also_hide, 'hide', 'title'))
+                action_list.append(Action(also_hide, 'hide', 'title', force=True))
             if config['hide_thumbnails'] and also_hide.type == 'episode':
-                action_list.append(Action(also_hide, 'hide', 'thumb'))
+                action_list.append(Action(also_hide, 'hide', 'thumb', force=True))
 
     return sorted(action_list, key=compare_actions)
 
@@ -362,11 +363,11 @@ def calculate_actions_restore_all(items):
 
     for item in items:
         if has_hidden_summary(item):
-            action_list.append(Action(item, 'restore', 'summary'))
+            action_list.append(Action(item, 'restore', 'summary', force=True))
         if has_hidden_title(item):
-            action_list.append(Action(item, 'restore', 'title'))
+            action_list.append(Action(item, 'restore', 'title', force=True))
         if has_hidden_thumbnail(item):
-            action_list.append(Action(item, 'restore', 'thumb'))
+            action_list.append(Action(item, 'restore', 'thumb', force=True))
 
     return sorted(action_list, key=compare_actions)
 
@@ -437,6 +438,10 @@ def perform_actions(plex, listener, actions):
 
     restored_items = {action.item for action in actions if action.action == 'restore'}
 
+    # Don't retry forced items (also_unhide on unplayed items -- has_field_to_hide returns true, and it would be retried despite
+    # successfully being restored)
+    forced_items = {action.item for action in actions if action.force}
+
     # Tell Plex to re-download data for the restored items, now that every field to restore has been unlocked
     for item in restored_items:
         item.refresh()
@@ -461,7 +466,7 @@ def perform_actions(plex, listener, actions):
             item.reload()
         if args.debug: print("Reload finished")
 
-        to_retry = sorted([item for item in to_retry if has_field_to_hide(item)], key=compare_items)
+        to_retry = sorted([item for item in to_retry if has_field_to_hide(item) and not item in forced_items], key=compare_items)
         if not to_retry:
             if not args.quiet: print("All fields were successfully edited")
             return
@@ -477,7 +482,7 @@ def perform_actions(plex, listener, actions):
 
         listener.wait_for_finish()
 
-    failed = sorted([item for item in to_retry if has_field_to_hide(item)], key=compare_items)
+    failed = sorted([item for item in to_retry if has_field_to_hide(item) and not item in forced_items], key=compare_items)
 
     if not failed and not args.quiet:
         print("All fields were successfully edited")
