@@ -33,11 +33,12 @@ plex\_url, plex\_token, libraries, ignored\_items
 hidden\_string and lock\_hidden\_summaries were removed. (Edited fields are now always locked; disabling that setting was rarely a good idea.)
 
 The following settings were added:
+hidden\_summary\_string (string to show in Plex for a hidden summary)  
+hidden\_title\_string (string to show in Plex for a hidden title)
 hide\_summaries (true/false)  
 hide\_titles (true/false)  
 hide\_thumbnails (true/false)  
-hidden\_summary\_string (string to show in Plex for a hidden summary)  
-hidden\_title\_string (string to show in Plex for a hidden title)
+process\_thumbnails (true/false, see config\_sample.toml for a detailed explanation)
 
 # Installation
 

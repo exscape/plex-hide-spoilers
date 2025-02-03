@@ -23,6 +23,16 @@ hide_summaries = true
 hide_titles = false
 hide_thumbnails = false
 
+# The following setting controls whether thumbnails are processed AT ALL.
+# Setting this to false will improve performance for those who don't want to hide thumbnails; with thousands of episodes,
+# this can be a >10x speedup, as checking the thumbnails is rather slow.
+# This must be true if hide_thumbnails is true above.
+#
+# PLEASE NOTE:
+# When this is false, thumbnails/posters will not even be looked at, which means if they have been hidden
+# by the script previously, they will not be unhidden, not even with the --restore-all argument.
+process_thumbnails = true
+
 # The text to show in Plex for episodes/movies with their summmary/title hidden.
 #
 # !! IMPORTANT !!

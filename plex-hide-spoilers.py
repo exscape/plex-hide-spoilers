@@ -161,9 +161,10 @@ def read_config(config_path = None):
     if 'ignored_items' not in config or not isinstance(config['ignored_items'], list):
         config['ignored_items'] = []
 
+    known_settings = ('plex_url', 'plex_token', 'libraries', 'ignored_items', 'hidden_summary_string',
+                           'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'process_thumbnails')
     errors = []
-    for setting in ('plex_url', 'plex_token', 'hidden_summary_string', 'hidden_title_string',
-                    'hide_summaries', 'hide_thumbnails', 'hide_titles', 'libraries'):
+    for setting in known_settings:
         if setting not in config or (isinstance(config[setting], str) and len(config[setting]) == 0):
             errors.append(setting)
     if errors:
@@ -173,13 +174,16 @@ def read_config(config_path = None):
         sys.exit(8)
 
     for setting in config:
-        if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries', 'ignored_items', 'hidden_summary_string',
-                           'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles'):
+        if setting not in known_settings:
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
         print("You need to edit config.toml and change the Plex server settings to match your server!")
         sys.exit(2)
+
+    if config['hide_thumbnails'] and not config['process_thumbnails']:
+        print("hide_thumbnails is enabled, but process_thumbnails is not; either disable hide_thumbnails or enable process_thumbnails!")
+        sys.exit(16)
 
     # Not intended as a user-facing setting, but fits in config anyway
     config['in_progress_string'] = "(Restore in progress...)"
@@ -313,7 +317,7 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
                 action_list.append(Action(item, 'restore', 'summary'))
             if has_hidden_title(item):
                 action_list.append(Action(item, 'restore', 'title'))
-            if has_hidden_thumbnail(item):
+            if config['process_thumbnails'] and has_hidden_thumbnail(item):
                 action_list.append(Action(item, 'restore', 'thumb'))
         elif not item.isPlayed and not should_ignore_item(item):
             # Cases 2+3+4: check each field in turn, and create up to one action per field and item
@@ -329,7 +333,7 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
                     # Generic titles like "Episode 3" should not be hidden or restored, nor should entirely missing titles
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_titles'] else 'restore', 'title'))
-            if item.type == 'episode' and has_hidden_thumbnail(item) != config['hide_thumbnails']:
+            if config['process_thumbnails'] and item.type == 'episode' and has_hidden_thumbnail(item) != config['hide_thumbnails']:
                 if config['hide_thumbnails'] and not has_thumbnail(item):
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_thumbnails'] else 'restore', 'thumb'))
@@ -343,14 +347,14 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
                 action_list.append(Action(also_unhide, 'restore', 'summary'))
             if has_hidden_title(also_unhide):
                 action_list.append(Action(also_unhide, 'restore', 'title'))
-            if has_hidden_thumbnail(also_unhide):
+            if config['process_thumbnails'] and has_hidden_thumbnail(also_unhide):
                 action_list.append(Action(also_unhide, 'restore', 'thumb'))
         if also_hide:
             if config['hide_summaries']:
                 action_list.append(Action(also_hide, 'hide', 'summary'))
             if config['hide_titles'] and also_hide.type == 'episode':
                 action_list.append(Action(also_hide, 'hide', 'title'))
-            if config['hide_thumbnails'] and also_hide.type == 'episode':
+            if config['process_thumbnails'] and config['hide_thumbnails'] and also_hide.type == 'episode':
                 action_list.append(Action(also_hide, 'hide', 'thumb'))
 
     return sorted(action_list, key=compare_actions)
@@ -367,7 +371,7 @@ def calculate_actions_restore_all(items):
             action_list.append(Action(item, 'restore', 'summary'))
         if has_hidden_title(item):
             action_list.append(Action(item, 'restore', 'title'))
-        if has_hidden_thumbnail(item):
+        if config['process_thumbnails'] and has_hidden_thumbnail(item):
             action_list.append(Action(item, 'restore', 'thumb'))
 
     return sorted(action_list, key=compare_actions)
@@ -384,6 +388,7 @@ def perform_single_action(plex, action):
     item = action.item
 
     if action.field == 'thumb':
+        assert config['process_thumbnails']
         # Using editField on "thumb" doesn't work; even when locked, Plex redownloads the thumbnail
         # on the next refresh. I assume that's a bug, but even so, we need a solution that works now.
         if action.action == 'hide':
@@ -519,6 +524,9 @@ def main():
     listener = PlexListener(plex)
 
     if args.restore_all:
+        if not config['process_thumbnails']:
+            print("Warning: process_thumbnails set to false in the config file; if any thumbnails were previously hidden, " +
+                  "they will *not* be restored unless process_thumbnails is set to true while restoring.")
         if not args.quiet: print("This can take a while.")
         items_by_guid = fetch_items(plex)
         actions = calculate_actions_restore_all(items_by_guid.values())
