@@ -33,13 +33,6 @@ hide_thumbnails = false
 hidden_summary_string = "Summary hidden."
 hidden_title_string = "(Title hidden)"
 
-# Whether we should lock the fields we edit or not.
-# Locked fields won't be automatically overwritten by Plex when you refresh items.
-# If this is set to false, refreshing metadata in Plex will restore all changes made by this script.
-#
-# Use the script with the --restore-all argument (which ignores this setting) to restore and unlock all modified fields.
-lock_edited_fields = true
-
 # You can specify a list of shows and movies to ignore.
 # Ignored shows/movies always have their summaries visible.
 # For example, you may want to show the summaries for shows you already know by heart,

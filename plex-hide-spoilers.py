@@ -11,6 +11,7 @@ import re
 import sys
 import time
 import argparse
+import itertools
 
 from plexapi.server import PlexServer
 from plexapi.alert import AlertListener
@@ -172,9 +173,8 @@ def read_config(config_path = None):
         sys.exit(8)
 
     for setting in config:
-        if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries', 'ignored_items',
-                           'lock_hidden_summaries', 'hidden_summary_string', 'hidden_title_string',
-                           'lock_edited_fields', 'hide_summaries', 'hide_thumbnails', 'hide_titles'):
+        if setting not in ('plex_url', 'plex_token', 'hidden_string', 'libraries', 'ignored_items', 'hidden_summary_string',
+                           'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles'):
             print(f"Warning: unknown setting \"{setting}\" in config.toml, ignoring")
 
     if config['plex_url'] == "http://192.168.x.x:32400" or config['plex_token'] == "...":
@@ -283,8 +283,8 @@ def compare_items(i):
             i.index if i.type == 'episode' else 0) # Episode number for TV shows
 
 def compare_actions(a):
-    """ Create an ordering between actions: sort by hide/restore, then episode/movie """
-    return (a.action,) + compare_items(a.item)
+    """ Create an ordering between actions: sort by episode/movie first, then action type (hide/restore) """
+    return compare_items(a.item) + (a.action,)
 
 def should_ignore_item(item):
     """ Returns true for items we should ignore (never hide any fields for) """
@@ -420,7 +420,7 @@ def perform_single_action(plex, action):
         else:
             value = config['hidden_title_string']
 
-        item.editField(action.field, value, locked = config['lock_edited_fields'])
+        item.editField(action.field, value, locked = True)
     elif action.action == 'restore':
         # Unlock the field. We also write a temporary message which shows up in Plex
         # almost immediately, while it is still downloading the correct data.
@@ -442,14 +442,21 @@ def perform_actions(plex, listener, actions):
         print(f"Performing {num_actions} actions (hiding fields on {num_hides} items, " +
               f"restoring fields on {num_restores} items)")
 
-    # Actually perform the actions
-    for action in actions:
-        action.should_retry = perform_single_action(plex, action)
+    # Group the actions by item, so that we can perform all actions on an item, then refresh it.
+    # That way, aborting the script mid-run won't leave items edited but unrefreshed (leaving
+    # restored items as "(Restore in progress)" permanently)
+    # This creates a dict of {item: [actions_for_item]}
+    actions.sort(key=compare_actions)
+    grouped_actions = {k: list(v) for k, v in itertools.groupby(actions, key=lambda action: action.item)}
 
-    # Tell Plex to re-download data for the restored fields, now that every field to restore has been unlocked
-    restored_items = {action.item for action in actions if action.action == 'restore'}
-    for item in restored_items:
-        item.refresh()
+    for item in grouped_actions.keys():
+        try:
+            for action in grouped_actions[item]:
+                action.should_retry = perform_single_action(plex, action)
+        finally:
+            # If an exception is caught (including KeyboardInterrupt), refresh the current item before aborting
+            item.refresh()
+            if args.debug: print(f"Refreshed item: {item_title_string(item)}")
 
     # All API requests have now been sent to Plex, but it may not have finished downloading summaries yet; wait until it's done
     listener.wait_for_finish()
