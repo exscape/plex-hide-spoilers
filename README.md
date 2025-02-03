@@ -20,6 +20,25 @@ Please open a Github issue if things aren't working properly, or even if you jus
 
 * Really only usable on a server with a single user, since fields are hidden for everyone on the server.
 
+# Updating from v0.2 or earlier
+
+v0.3 contains many changes and is close to being a full rewrite.  
+Enough configuration variables changed that I decided to not to support old config files; it would be unclear which defaults to use, among other issues.
+
+I would recommend renaming your old config to config\_old, copying config\_sample to config, and then editing the old config to copy the unchanged settings over to the new one. (Sorry for the inconvenience!)
+
+The following settings remain exactly as they were and can be kept/copied over:  
+plex\_url, plex\_token, libraries, ignored\_items
+
+hidden\_string and lock\_hidden\_summaries were removed. (Edited fields are now always locked; disabling that setting was rarely a good idea.)
+
+The following settings were added:
+hide\_summaries (true/false)  
+hide\_titles (true/false)  
+hide\_thumbnails (true/false)  
+hidden\_summary\_string (string to show in Plex for a hidden summary)  
+hidden\_title\_string (string to show in Plex for a hidden title)
+
 # Installation
 
 ## Windows
