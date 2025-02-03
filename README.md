@@ -120,6 +120,8 @@ While the recommended usage is with Tautulli or using a task scheduler, make sur
 
 ## With Tautulli
 
+**Please note:** On Windows, running the script via Tautulli will probably show a cmd.exe window while running. I'm not aware of a way to stop this from happening; if you know of a way that works, please create an issue and I'll include it in the README.
+
 A nice way to use the script is together with **[Tautulli](https://tautulli.com/)**, which allows you to run scripts on certain Plex events.
 I have it set up to run on "Watched", "Recently added" and (because why not) "Plex Server Back Up".
 

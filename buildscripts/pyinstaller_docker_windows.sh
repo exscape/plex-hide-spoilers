@@ -19,6 +19,7 @@ rm -rf dist/windows/plex-hide-spoilers build "${FILENAME}.zip"
 docker run --rm -v "$(pwd):/src/" pyinstaller-3.8-win64
 
 cp config_sample.toml README.md dist/windows/plex-hide-spoilers
+cp buildscripts/plex-hide-spoilers.bat dist/windows/plex-hide-spoilers
 cp -Rp licenses dist/windows/plex-hide-spoilers
 
 cd dist/windows

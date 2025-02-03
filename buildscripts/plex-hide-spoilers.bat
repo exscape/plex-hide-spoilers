@@ -1,0 +1,1 @@
+plex-hide-spoilers.exe %*
