@@ -17,11 +17,14 @@ libraries = ['TV Shows', 'TV Series']
 # By default, episode summaries are hidden, but not episode titles or thumbnails.
 # If thumbnails are hidden, a fallback image for the show is used instead.
 #
-# For movies (if you add your movie library/libraries above), only summaries are hidden, since
-# hiding the movie name or poster/cover makes little sense.
+# For movies (if you add your movie library/libraries above), only summaries are hidden by default,
+# to enable hiding movie thumbnails enable "also_hide_movie_thumbnails" and provide a "movie_thumbnail_path"
 hide_summaries = true
 hide_titles = false
 hide_thumbnails = false
+
+also_hide_movie_thumbnails = false
+movie_thumbnail_path = 'default_thumbnail.jpeg'
 
 # The following setting controls whether thumbnails are processed AT ALL.
 # Setting this to false will improve performance for those who don't want to hide thumbnails; with thousands of episodes,
