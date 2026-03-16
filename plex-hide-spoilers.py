@@ -162,7 +162,8 @@ def read_config(config_path = None):
         config['ignored_items'] = []
 
     known_settings = ('plex_url', 'plex_token', 'libraries', 'ignored_items', 'hidden_summary_string',
-                           'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'process_thumbnails')
+                           'hidden_title_string', 'hide_summaries', 'hide_thumbnails', 'hide_titles', 'process_thumbnails',
+                           'also_hide_movie_thumbnails', 'movie_thumbnail_path')
     errors = []
     for setting in known_settings:
         if setting not in config or (isinstance(config[setting], str) and len(config[setting]) == 0):
@@ -233,7 +234,7 @@ def has_title(item):
     return has_non_generic_title(item) and not has_hidden_title(item)
 
 def has_thumbnail(item):
-    return item.thumb and len(item.thumb) > 0 and not item.thumb in (item.parentThumb, item.grandparentThumb) and not has_hidden_thumbnail(item)
+    return item.thumb and len(item.thumb) > 0 and not item.thumb in (getattr(item, "parentThumb", ()), getattr(item, "grandparentThumb", ())) and not has_hidden_thumbnail(item)
 
 def has_non_generic_title(item):
     """ True if an item has a non-generic (not e.g. "Episode 5") title -- also True(!) for hidden titles. """
@@ -296,6 +297,9 @@ def should_ignore_item(item):
         return item.grandparentTitle.strip() in config['ignored_items']
     if item.type == 'movie':
         return item.title.strip() in config['ignored_items']
+    
+def media_type_for_hiding_thumbnails(item):
+    return item.type in ("movie", "episode") if config["also_hide_movie_thumbnails"] else item.type == 'episode'
 
 def calculate_actions(items, also_hide=None, also_unhide=None):
     """ Examine all items and calculate which actions we need to take """
@@ -333,7 +337,7 @@ def calculate_actions(items, also_hide=None, also_unhide=None):
                     # Generic titles like "Episode 3" should not be hidden or restored, nor should entirely missing titles
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_titles'] else 'restore', 'title'))
-            if config['process_thumbnails'] and item.type == 'episode' and has_hidden_thumbnail(item) != config['hide_thumbnails']:
+            if config['process_thumbnails'] and media_type_for_hiding_thumbnails(item) and has_hidden_thumbnail(item) != config['hide_thumbnails']:
                 if config['hide_thumbnails'] and not has_thumbnail(item):
                     continue
                 action_list.append(Action(item, 'hide' if config['hide_thumbnails'] else 'restore', 'thumb'))
@@ -392,15 +396,25 @@ def perform_single_action(plex, action):
         # Using editField on "thumb" doesn't work; even when locked, Plex redownloads the thumbnail
         # on the next refresh. I assume that's a bug, but even so, we need a solution that works now.
         if action.action == 'hide':
-            generic_thumb = item.parentThumb or item.grandparentThumb
+            generic_thumb = getattr(item, "parentThumb", False) or getattr(item, "grandparentThumb", False)
             if not generic_thumb or not generic_thumb.startswith('/'):
-                # TODO: does this ever happen? If so, we should add a fallback thumbnail to use
-                print(f"Warning: couldn't hide thumbnail for {item_title_string(item)}")
-                return False
+                if not config["also_hide_movie_thumbnails"]:
+                   # TODO: does this ever happen? If so, we should add a fallback thumbnail to use
+                    print(f"Warning: couldn't hide thumbnail for {item_title_string(item)}")
+                    return False
+                elif not os.path.isfile(config["movie_thumbnail_path"]):
+                    print(f"Warning: couldn't find {config['movie_thumbnail_path']} file while trying to hide thumbnail for {item_title_string(item)}")
+                    return False                    
+                else:
+                    # Will get here when hiding movie thumbnails
+                    # Add the label first, to ensure we can't get a hidden thumbnail without the label
+                    item.addLabel("ThumbnailHidden")
+                    item.uploadPoster(filepath=config["movie_thumbnail_path"])
 
-            # Add the label first, to ensure we can't get a hidden thumbnail without the label
-            item.addLabel("ThumbnailHidden")
-            item.uploadPoster(url=plex.url(generic_thumb, includeToken=True))
+            else:
+                # Add the label first, to ensure we can't get a hidden thumbnail without the label
+                item.addLabel("ThumbnailHidden")
+                item.uploadPoster(url=plex.url(generic_thumb, includeToken=True))
         else:
             new_poster = 0
             posters = item.posters()

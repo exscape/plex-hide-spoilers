@@ -8,3 +8,6 @@ env/
 build/
 dist/
 *.spec
+
+# Default poster (remove if one is provided for everyone)
+default_thumbnail*
